@@ -54,10 +54,13 @@ export async function disconnectPrimaryConnection(
 ): Promise<void> {
   try {
     const docRef = db.collection(COLLECTION).doc(userId);
-    await docRef.update({
-      status: 'disconnected',
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const doc = await docRef.get();
+    if (doc.exists) {
+      await docRef.update({
+        status: 'disconnected',
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
   } catch (err) {
     console.error('disconnectPrimaryConnection failed:', err);
     throw err;

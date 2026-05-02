@@ -6,6 +6,21 @@
 
 ---
 
+> ### Unipile WhatsApp Connection Integration
+>
+> - **What changed:** Implemented Unipile service and integrated it into the frontend to generate hosted auth links. Updated connection management to list connected accounts directly from Unipile, supporting both connection mapping to the local database and clean disconnections from the Unipile server itself. Refactored the UI to robustly handle the E.164 standard phone format and present active connection details clearly.
+> - **Why:** Allows users to easily connect their WhatsApp accounts without directly touching WhatsApp APIs, bridging the pipeline securely for message dispatch operations.
+> - **Files:**
+>   - `lib/services/unipile.ts`
+>   - `src/app/api/admin/unipile/connect/route.ts`
+>   - `src/app/api/admin/connections/route.ts`
+>   - `src/app/admin/connect/page.tsx`
+>   - `src/app/admin/connect/ConnectManager.tsx`
+>   - `src/app/admin/settings/page.tsx`
+>   - `src/app/admin/settings/SettingsManager.tsx`
+
+---
+
 > ### Multi-Tenant Database Architecture
 >
 > - **What changed:** Converted entire application data layer to be fully Multi-Tenant, injecting `userId` into all database operations, cron jobs, background workers, pipelines, and server-side components. Refactored `SystemSettings` to provide a system-wide default configuration while enabling user-specific configuration overrides via a `resetSettings` function.

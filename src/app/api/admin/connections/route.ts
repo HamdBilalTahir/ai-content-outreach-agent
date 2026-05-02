@@ -4,6 +4,10 @@ import {
   disconnectPrimaryConnection,
 } from '../../../../../lib/db/connections';
 import { getAuthenticatedUserId } from '../../../../../lib/utils/auth';
+import {
+  deleteUnipileAccount,
+  getConnectedAccounts,
+} from '../../../../../lib/services/unipile';
 
 export async function POST(req: Request) {
   try {
@@ -39,7 +43,13 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const accounts = await getConnectedAccounts(userId);
+    for (const acc of accounts) {
+      await deleteUnipileAccount(acc.accountId);
+    }
+
     await disconnectPrimaryConnection(userId);
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Disconnect failed:', error);

@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation';
 
 export default function SettingsManager({
   initialSettings,
+  connectedNumber,
 }: {
   initialSettings: SystemSettings;
+  connectedNumber: string | null;
 }) {
   const router = useRouter();
   const [settings, setSettings] = useState<SystemSettings>(initialSettings);
@@ -59,6 +61,43 @@ export default function SettingsManager({
           cron.
         </p>
       </div>
+
+      {connectedNumber ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 shadow-sm flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-green-900">
+              Active WhatsApp Connection
+            </h2>
+            <p className="text-sm text-green-700">
+              Messages will be sent from{' '}
+              <span className="font-mono font-bold">{connectedNumber}</span>
+            </p>
+          </div>
+          <a
+            href="/admin/connect"
+            className="text-sm font-medium text-green-600 hover:text-green-500"
+          >
+            Manage &rarr;
+          </a>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 shadow-sm flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-yellow-900">
+              No WhatsApp Connection
+            </h2>
+            <p className="text-sm text-yellow-700">
+              The dispatcher cannot send messages without an active connection.
+            </p>
+          </div>
+          <a
+            href="/admin/connect"
+            className="text-sm font-medium text-yellow-600 hover:text-yellow-500"
+          >
+            Connect &rarr;
+          </a>
+        </div>
+      )}
 
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-6">
         {/* Toggles */}
