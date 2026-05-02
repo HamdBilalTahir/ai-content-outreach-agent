@@ -1,0 +1,2 @@
+echo "🐶 Husky: Running TypeScript type checks and Linters..."
+npm run typecheck --silent && npx lint-staged --verbose
