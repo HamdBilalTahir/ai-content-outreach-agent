@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Lead } from '../../../../lib/types';
+import type { Lead } from '../../../../../lib/types';
 import { useRouter } from 'next/navigation';
 
 export default function OutcomeCard({ lead }: { lead: Lead }) {

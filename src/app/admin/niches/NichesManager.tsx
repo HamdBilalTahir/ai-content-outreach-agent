@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { Niche } from '../../../../lib/types';
 import { useRouter } from 'next/navigation';
 
@@ -18,6 +18,11 @@ export default function NichesManager({
   const [nicheName, setNicheName] = useState('');
   const [seedUrls, setSeedUrls] = useState('');
   const [crawlPriority, setCrawlPriority] = useState(5);
+
+  const [maxDailyCrawls, setMaxDailyCrawls] = useState(10);
+  const [maxDailyDispatches, setMaxDailyDispatches] = useState(5);
+  const [minAiGapScore, setMinAiGapScore] = useState(6.0);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRunningLoop, setIsRunningLoop] = useState(false);
 
@@ -27,6 +32,9 @@ export default function NichesManager({
     setNicheName('');
     setSeedUrls('');
     setCrawlPriority(5);
+    setMaxDailyCrawls(10);
+    setMaxDailyDispatches(5);
+    setMinAiGapScore(6.0);
   };
 
   const startEdit = (niche: Niche) => {
@@ -35,6 +43,9 @@ export default function NichesManager({
     setNicheName(niche.nicheName);
     setSeedUrls((niche.seedUrls || []).join('\n'));
     setCrawlPriority(niche.crawlPriority);
+    setMaxDailyCrawls(niche.pipelineGuardrails?.maxDailyCrawls || 10);
+    setMaxDailyDispatches(niche.pipelineGuardrails?.maxDailyDispatches || 5);
+    setMinAiGapScore(niche.pipelineGuardrails?.minAiGapScore || 6.0);
   };
 
   const cancelForm = () => {
@@ -50,11 +61,22 @@ export default function NichesManager({
       .filter(Boolean);
 
     try {
+      const pipelineGuardrails = {
+        maxDailyCrawls,
+        maxDailyDispatches,
+        minAiGapScore,
+      };
+
       if (isCreating) {
         await fetch('/api/admin/niches', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nicheName, seedUrls: urls, crawlPriority }),
+          body: JSON.stringify({
+            nicheName,
+            seedUrls: urls,
+            crawlPriority,
+            pipelineGuardrails,
+          }),
         });
       } else if (editingId) {
         await fetch('/api/admin/niches', {
@@ -64,6 +86,7 @@ export default function NichesManager({
             id: editingId,
             seedUrls: urls,
             crawlPriority,
+            pipelineGuardrails,
           }),
         });
       }
@@ -171,7 +194,60 @@ export default function NichesManager({
                 className="mt-1 block w-full sm:w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
               />
             </div>
-            <div className="flex justify-end space-x-3 pt-4">
+
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <h3 className="text-sm font-medium text-gray-900 mb-4">
+                Pipeline Guardrails
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Max Daily Crawls
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={maxDailyCrawls}
+                    onChange={(e) =>
+                      setMaxDailyCrawls(parseInt(e.target.value) || 0)
+                    }
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Max Daily Dispatches
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={maxDailyDispatches}
+                    onChange={(e) =>
+                      setMaxDailyDispatches(parseInt(e.target.value) || 0)
+                    }
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Min AI Gap Score
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    value={minAiGapScore}
+                    onChange={(e) =>
+                      setMinAiGapScore(parseFloat(e.target.value) || 0)
+                    }
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 mt-4">
               <button
                 type="button"
                 onClick={cancelForm}
@@ -206,33 +282,42 @@ export default function NichesManager({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {initialNiches.map((niche) => (
-              <tr key={niche.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">
-                  {niche.nicheName}
-                </td>
-                <td className="px-4 py-3 text-right text-gray-600">
-                  {niche.crawlPriority}
-                </td>
-                <td className="px-4 py-3 text-right text-gray-600">
-                  {niche.avgGapScore.toFixed(1)}
-                </td>
-                <td className="px-4 py-3 text-right text-gray-600">
-                  {(niche.closeRate * 100).toFixed(1)}%
-                </td>
-                <td className="px-4 py-3 text-gray-500">
-                  {niche.lastCrawled
-                    ? new Date(niche.lastCrawled as any).toLocaleString()
-                    : 'Never'}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => startEdit(niche)}
-                    className="text-blue-600 hover:text-blue-900 font-medium text-xs"
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
+              <React.Fragment key={niche.id}>
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">
+                    {niche.nicheName}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-600">
+                    {niche.crawlPriority}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-600">
+                    {niche.avgGapScore.toFixed(1)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-600">
+                    {(niche.closeRate * 100).toFixed(1)}%
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {niche.lastCrawled
+                      ? new Date(niche.lastCrawled as any).toLocaleString()
+                      : 'Never'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => startEdit(niche)}
+                      className="text-blue-600 hover:text-blue-900 font-medium text-xs"
+                    >
+                      Edit
+                    </button>
+                  </td>
+                </tr>
+                {niche.aiReasoning && (
+                  <tr className="bg-blue-50/50">
+                    <td colSpan={6} className="px-4 py-3 text-sm text-blue-800">
+                      <strong>AI Strategy Note:</strong> {niche.aiReasoning}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
             {initialNiches.length === 0 && (
               <tr>

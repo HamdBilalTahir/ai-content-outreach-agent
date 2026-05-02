@@ -52,7 +52,7 @@ export default function ConnectManager({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          successUrl: `${window.location.origin}/admin/connect?success=true&countryCode=${countryCode}&phoneNumber=${phoneNumber}`,
+          successUrl: `${window.location.origin}/admin/connections?success=true&countryCode=${countryCode}&phoneNumber=${phoneNumber}`,
         }),
       });
 

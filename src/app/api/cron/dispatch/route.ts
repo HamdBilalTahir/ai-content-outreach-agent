@@ -16,6 +16,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     let dispatchedCount = 0;
 
+    const { db } = await import('../../../../../lib/firebase/admin');
+    const runningPipelinesSnapshot = await db
+      .collection('pipelines')
+      .where('status', '==', 'running')
+      .get();
+
+    // Group running pipelines by user
+    const runningPipelinesByUserId: Record<string, string[]> = {};
+    runningPipelinesSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      if (!runningPipelinesByUserId[data.userId]) {
+        runningPipelinesByUserId[data.userId] = [];
+      }
+      runningPipelinesByUserId[data.userId].push(doc.id);
+    });
+
     for (const settings of allSettings) {
       if (
         !settings.dispatchEnabled ||
@@ -23,8 +39,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       ) {
         continue;
       }
-      // Note: dispatchBatch currently dispatches leads indiscriminately without filtering by userId
-      await dispatchBatch();
+
+      const activePipelineIds = runningPipelinesByUserId[settings.userId] || [];
+      if (activePipelineIds.length === 0) continue;
+
+      await dispatchBatch(settings, undefined, activePipelineIds);
       dispatchedCount++;
     }
 

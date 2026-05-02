@@ -39,6 +39,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     let totalLeadsQualified = 0;
     const sessionIds: string[] = [];
 
+    const { db } = await import('../../../../../lib/firebase/admin');
+    const runningPipelinesSnapshot = await db
+      .collection('pipelines')
+      .where('status', '==', 'running')
+      .get();
+
+    // Process running pipelines
+    const runningPipelinesByUserId: Record<string, string[]> = {};
+    runningPipelinesSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      if (!runningPipelinesByUserId[data.userId]) {
+        runningPipelinesByUserId[data.userId] = [];
+      }
+      runningPipelinesByUserId[data.userId].push(doc.id);
+    });
+
     for (const settings of allSettings) {
       if (
         !settings.crawlEnabled ||
@@ -47,19 +63,59 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         continue;
       }
 
-      // Execute the pipeline for the specific user's settings
+      const activePipelineIds = runningPipelinesByUserId[settings.userId] || [];
+      if (activePipelineIds.length === 0) continue;
+
+      // Execute the pipeline for the specific user's active pipelines
+      const { getAllNiches } = await import('../../../../../lib/db/niches');
+      const niches = await getAllNiches(settings.userId);
+      const activeNiches = niches.filter((n) =>
+        activePipelineIds.includes(n.pipelineId)
+      );
+      if (activeNiches.length === 0) continue;
+
+      const nicheMap = new Map(activeNiches.map((n) => [n.id, n]));
+
+      // We'll pass activeNiches to the strategy agent to only consider them
+      // This requires modifying runCrawlStrategyAgent to accept an array of niche IDs to filter by, or we just rely on it picking.
+      // For now, let's allow it to pick from active niches.
       const strategy = await runCrawlStrategyAgent(settings.userId);
       const { crawlSessionId, crawlTargets } = strategy;
 
+      // Only prospect targets that are part of active pipelines
+      const activeCrawlTargets = crawlTargets.filter((t) =>
+        nicheMap.has(t.nicheId)
+      );
+      if (activeCrawlTargets.length === 0) continue;
+
       const prospectorResults = await runAutoProspector(
-        crawlTargets,
+        activeCrawlTargets,
         crawlSessionId
       );
 
-      const allBrandUrls: { url: string; nicheId: string }[] =
+      let allBrandUrls: { url: string; nicheId: string }[] =
         prospectorResults.flatMap((r) =>
           r.brandUrls.map((url) => ({ url, nicheId: r.nicheId }))
         );
+
+      // Enforce maxDailyCrawls guardrail
+      const filteredBrandUrls = [];
+      const crawlCountPerNiche = new Map<string, number>();
+
+      for (const item of allBrandUrls) {
+        const niche = nicheMap.get(item.nicheId);
+        const maxCrawls = niche?.pipelineGuardrails?.maxDailyCrawls || 10;
+
+        const currentCount = crawlCountPerNiche.get(item.nicheId) || 0;
+        if (currentCount >= maxCrawls) {
+          continue; // Reached limit
+        }
+
+        filteredBrandUrls.push(item);
+        crawlCountPerNiche.set(item.nicheId, currentCount + 1);
+      }
+
+      allBrandUrls = filteredBrandUrls;
 
       const leadsDiscovered = allBrandUrls.length;
       totalLeadsDiscovered += leadsDiscovered;
@@ -69,6 +125,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           () =>
             runPipeline({
               userId: settings.userId,
+              pipelineId:
+                nicheMap.get(nicheId)?.pipelineId || 'default-pipeline',
               url,
               nicheId,
               crawlSessionId,

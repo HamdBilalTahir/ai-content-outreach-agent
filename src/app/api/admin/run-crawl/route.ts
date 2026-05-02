@@ -27,11 +27,25 @@ async function runWithConcurrencyLimit<T>(
   return results;
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const userId = await getAuthenticatedUserId();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    let forceNicheId: string | undefined;
+    let maxTargets: number | undefined;
+    let isSandbox = false;
+    let pipelineId: string | undefined;
+    try {
+      const body = await req.json();
+      forceNicheId = body.forceNicheId;
+      maxTargets = body.maxTargets ? Number(body.maxTargets) : undefined;
+      isSandbox = !!body.isSandbox;
+      pipelineId = body.pipelineId;
+    } catch {
+      // Ignore JSON parse errors
     }
 
     const settings = await getSettings(userId);
@@ -42,18 +56,67 @@ export async function POST() {
       );
     }
 
-    const strategy = await runCrawlStrategyAgent(userId);
+    // Start strategy agent to get a session ID
+    const strategy = await runCrawlStrategyAgent(
+      userId,
+      forceNicheId,
+      isSandbox,
+      pipelineId
+    );
     const { crawlSessionId, crawlTargets } = strategy;
 
+    // Run the rest of the pipeline in the background
+    // (We don't await this so the response returns immediately)
+    runBackgroundCrawl(
+      userId,
+      crawlSessionId,
+      crawlTargets,
+      settings,
+      maxTargets,
+      isSandbox,
+      pipelineId
+    ).catch((err) => {
+      console.error('Background crawl failed:', err);
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Crawl started in the background.',
+      sessionId: crawlSessionId,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Manual crawl failed:', message);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
+  }
+}
+
+async function runBackgroundCrawl(
+  userId: string,
+  crawlSessionId: string,
+  crawlTargets: any[],
+  settings: any,
+  maxTargets?: number,
+  isSandbox?: boolean,
+  pipelineId?: string
+) {
+  try {
     const prospectorResults = await runAutoProspector(
       crawlTargets,
       crawlSessionId
     );
 
-    const allBrandUrls: { url: string; nicheId: string }[] =
+    let allBrandUrls: { url: string; nicheId: string }[] =
       prospectorResults.flatMap((r) =>
         r.brandUrls.map((url) => ({ url, nicheId: r.nicheId }))
       );
+
+    if (maxTargets && maxTargets > 0) {
+      allBrandUrls = allBrandUrls.slice(0, maxTargets);
+    }
 
     const leadsDiscovered = allBrandUrls.length;
 
@@ -66,6 +129,8 @@ export async function POST() {
             nicheId,
             crawlSessionId,
             crawlSource: 'manual-crawl',
+            isSandbox,
+            pipelineId: pipelineId || 'default-pipeline',
           })
     );
 
@@ -81,19 +146,10 @@ export async function POST() {
       leadsQualified,
       sessionStatus: 'Completed',
     });
-
-    return NextResponse.json({
-      success: true,
-      leadsDiscovered,
-      leadsQualified,
-      sessionId: crawlSessionId,
-    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('Manual crawl failed:', message);
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    console.error('Background crawl error:', err);
+    await updateCrawlSession(crawlSessionId, {
+      sessionStatus: 'Failed',
+    });
   }
 }

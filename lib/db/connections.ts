@@ -9,8 +9,13 @@ export async function createOrUpdateConnection(
   data: Partial<Omit<Connection, 'id' | 'connectedAt' | 'updatedAt' | 'userId'>>
 ): Promise<string> {
   try {
-    // We use userId as the document ID for their connection
-    const docRef = db.collection(COLLECTION).doc(userId);
+    const instanceId = data.instanceId;
+    if (!instanceId) {
+      throw new Error('instanceId is required for connection');
+    }
+
+    // We use instanceId as the document ID for their connection
+    const docRef = db.collection(COLLECTION).doc(instanceId);
     const doc = await docRef.get();
 
     if (!doc.exists) {
@@ -34,26 +39,37 @@ export async function createOrUpdateConnection(
   }
 }
 
+export async function getConnections(userId: string): Promise<Connection[]> {
+  try {
+    const snapshot = await db
+      .collection(COLLECTION)
+      .where('userId', '==', userId)
+      .get();
+    return snapshot.docs.map(
+      (doc) => ({ id: doc.id, ...doc.data() }) as Connection
+    );
+  } catch (err) {
+    console.error('getConnections failed:', err);
+    throw err;
+  }
+}
+
 export async function getPrimaryConnection(
   userId: string
 ): Promise<Connection | null> {
   try {
-    const doc = await db.collection(COLLECTION).doc(userId).get();
-
-    if (!doc.exists) return null;
-
-    return { id: doc.id, ...doc.data() } as Connection;
+    const connections = await getConnections(userId);
+    const connected = connections.filter((c) => c.status === 'connected');
+    return connected.length > 0 ? connected[0] : null;
   } catch (err) {
     console.error('getPrimaryConnection failed:', err);
     throw err;
   }
 }
 
-export async function disconnectPrimaryConnection(
-  userId: string
-): Promise<void> {
+export async function disconnectConnection(instanceId: string): Promise<void> {
   try {
-    const docRef = db.collection(COLLECTION).doc(userId);
+    const docRef = db.collection(COLLECTION).doc(instanceId);
     const doc = await docRef.get();
     if (doc.exists) {
       await docRef.update({
@@ -62,7 +78,7 @@ export async function disconnectPrimaryConnection(
       });
     }
   } catch (err) {
-    console.error('disconnectPrimaryConnection failed:', err);
+    console.error('disconnectConnection failed:', err);
     throw err;
   }
 }

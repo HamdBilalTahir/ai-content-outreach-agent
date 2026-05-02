@@ -30,6 +30,16 @@ const PitchOutputSchema = z.object({
   generatedPitch: z
     .string()
     .describe('WhatsApp opener under 300 characters, conversational tone.'),
+  analystNarrative: z
+    .string()
+    .describe(
+      "Act as the 'Lead Analyst' reviewing data from the Scraper and Auditor. Explain your reasoning for the socialMediaGapScore in plain English."
+    ),
+  copywriterNarrative: z
+    .string()
+    .describe(
+      "Act as 'The Copywriter'. Explain your thought process behind the drafted pitch based on the chosen pitchAngle."
+    ),
 });
 
 const structuredLlm = llm.withStructuredOutput(PitchOutputSchema);
@@ -46,7 +56,8 @@ Rules:
 - Score socialMediaGapScore 1–10 (10 = complete media poverty, 1 = already producing great video)
 - Write generatedPitch as a casual WhatsApp message, referencing the specific product by name
 - Pitch must be under 300 characters — it's an opener, not a pitch deck
-- targetProductImageUrl must be one of the sanitized image URLs you receive`;
+- targetProductImageUrl must be one of the sanitized image URLs you receive
+- Output your reasoning as distinct personas (Analyst and Copywriter) as defined in the output schema`;
 
 export type PitchOutput = z.infer<typeof PitchOutputSchema>;
 
@@ -56,6 +67,7 @@ export interface GeminiPitchInput {
   instagramData: InstagramAudit | null;
   brandName: string | null;
   productPrice: number | null;
+  playbooks?: Record<string, string>;
 }
 
 function buildUserMessage(input: GeminiPitchInput): HumanMessage {
@@ -89,8 +101,23 @@ export async function generatePitch(
   input: GeminiPitchInput
 ): Promise<PitchOutput | null> {
   try {
+    let dynamicPrompt = SYSTEM_PROMPT;
+
+    if (input.playbooks) {
+      const copywriterPb = input.playbooks['copywriter'];
+      const analystPb = input.playbooks['analyst'];
+
+      dynamicPrompt += `\n\n--- PLAYBOOK INTELLIGENCE (Strictly follow these learned rules) ---\n`;
+      if (analystPb) {
+        dynamicPrompt += `\n[ANALYST PLAYBOOK]\n${analystPb}\n`;
+      }
+      if (copywriterPb) {
+        dynamicPrompt += `\n[COPYWRITER PLAYBOOK]\n${copywriterPb}\n`;
+      }
+    }
+
     const result = await structuredLlm.invoke([
-      new SystemMessage(SYSTEM_PROMPT),
+      new SystemMessage(dynamicPrompt),
       buildUserMessage(input),
     ]);
 

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import {
   createOrUpdateConnection,
-  disconnectPrimaryConnection,
+  getConnections,
+  disconnectConnection,
 } from '../../../../../lib/db/connections';
 import { getAuthenticatedUserId } from '../../../../../lib/utils/auth';
 import {
@@ -48,7 +49,12 @@ export async function DELETE() {
       await deleteUnipileAccount(acc.accountId);
     }
 
-    await disconnectPrimaryConnection(userId);
+    const connections = await getConnections(userId);
+    for (const conn of connections) {
+      if (conn.instanceId) {
+        await disconnectConnection(conn.instanceId);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -53,7 +53,11 @@ export async function sendWhatsappMessage(
 
 import type { SystemSettings } from '../types';
 
-export async function dispatchBatch(settings?: SystemSettings): Promise<void> {
+export async function dispatchBatch(
+  settings?: SystemSettings,
+  leadIds?: string[],
+  activePipelineIds?: string[]
+): Promise<void> {
   if (!settings) {
     console.warn('dispatchBatch called without settings, skipping.');
     return;
@@ -65,11 +69,62 @@ export async function dispatchBatch(settings?: SystemSettings): Promise<void> {
     return;
   }
 
-  const leads = await getLeadsByStatus(
+  const { getAllNiches } = await import('../db/niches');
+  const niches = await getAllNiches(settings.userId);
+  const nicheMap = new Map(niches.map((n) => [n.id, n]));
+
+  let leads = await getLeadsByStatus(
     settings.userId,
     'Qualified',
-    settings.dispatchBatchSize
+    settings.dispatchBatchSize * 2 // Fetch more to allow filtering
   );
+
+  if (activePipelineIds && activePipelineIds.length > 0) {
+    leads = leads.filter((l) => activePipelineIds.includes(l.pipelineId));
+  }
+
+  if (leadIds && leadIds.length > 0) {
+    // If specific leads are provided, filter the current leads or fetch them directly
+    const { getLeadById } = await import('../db/leads');
+    const specificLeads = [];
+    for (const id of leadIds) {
+      const l = await getLeadById(settings.userId, id);
+      if (l && l.status === 'Qualified') specificLeads.push(l);
+    }
+    leads = specificLeads;
+  }
+
+  // Filter leads based on guardrails
+  const filteredLeads = [];
+  const dispatchCountPerNiche = new Map<string, number>();
+
+  for (const lead of leads) {
+    const niche = nicheMap.get(lead.nicheId);
+    if (!niche) continue;
+
+    const guardrails = niche.pipelineGuardrails;
+    const minGapScore = guardrails?.minAiGapScore || 0;
+    const maxDispatches =
+      guardrails?.maxDailyDispatches || settings.dispatchBatchSize;
+
+    if (lead.socialMediaGapScore < minGapScore) {
+      continue; // Fails quality threshold
+    }
+
+    const currentCount = dispatchCountPerNiche.get(niche.id) || 0;
+    if (currentCount >= maxDispatches) {
+      continue; // Exceeds daily dispatch limit for this niche
+    }
+
+    filteredLeads.push(lead);
+    dispatchCountPerNiche.set(niche.id, currentCount + 1);
+
+    if (filteredLeads.length >= settings.dispatchBatchSize) {
+      break;
+    }
+  }
+
+  leads = filteredLeads;
   let sent = 0;
   let failed = 0;
 

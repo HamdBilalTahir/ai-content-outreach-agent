@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createNiche, updateNiche } from '../../../../../lib/db/niches';
+import {
+  createPipeline,
+  updatePipeline,
+} from '../../../../../lib/db/pipelines';
 import { getAuthenticatedUserId } from '../../../../../lib/utils/auth';
 
 export async function POST(req: Request) {
@@ -9,40 +12,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const {
-      nicheName,
-      seedUrls,
-      crawlPriority,
-      pipelineGuardrails,
-      pipelineId,
-    } = await req.json();
-
-    if (
-      !nicheName ||
-      !Array.isArray(seedUrls) ||
-      typeof crawlPriority !== 'number' ||
-      !pipelineId
-    ) {
+    const { name, description } = await req.json();
+    if (!name) {
       return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
     }
 
-    const id = await createNiche({
+    const id = await createPipeline({
       userId,
-      pipelineId,
-      nicheName,
-      seedUrls,
-      crawlPriority,
-      avgGapScore: 0,
-      closeRate: 0,
-      avgProductPrice: 0,
-      blacklistedSignals: [],
-      pipelineGuardrails,
-      lastCrawled: null as any, // or some default, wait, lastCrawled is Timestamp
+      name,
+      description: description || '',
+      status: 'stopped',
+      connectionId: null,
+      settings: {
+        overrideGlobalDeduplication: false,
+      },
     });
 
     return NextResponse.json({ success: true, id });
   } catch (error: any) {
-    console.error('Create niche failed:', error);
+    console.error('Create pipeline failed:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -54,22 +42,21 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id, seedUrls, crawlPriority, pipelineGuardrails } =
-      await req.json();
+    const { id, status, connectionId, settings } = await req.json();
 
-    if (!id || !Array.isArray(seedUrls) || typeof crawlPriority !== 'number') {
+    if (!id) {
       return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
     }
 
-    await updateNiche(userId, id, {
-      seedUrls,
-      crawlPriority,
-      pipelineGuardrails,
+    await updatePipeline(userId, id, {
+      status,
+      connectionId,
+      settings,
     });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Update niche failed:', error);
+    console.error('Update pipeline failed:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

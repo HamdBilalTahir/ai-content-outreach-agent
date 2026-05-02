@@ -1,8 +1,24 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 
+export interface Pipeline {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  status: 'running' | 'paused' | 'stopped';
+  connectionId: string | null;
+  settings: {
+    overrideGlobalDeduplication: boolean;
+    // can add other settings here, or keep guardrails
+  };
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface Niche {
   id: string;
   userId: string;
+  pipelineId: string;
   nicheName: string;
   crawlPriority: number;
   avgGapScore: number;
@@ -10,6 +26,12 @@ export interface Niche {
   avgProductPrice: number;
   seedUrls: string[];
   blacklistedSignals: string[];
+  aiReasoning?: string;
+  pipelineGuardrails?: {
+    maxDailyCrawls: number;
+    maxDailyDispatches: number;
+    minAiGapScore: number;
+  };
   lastCrawled: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -18,6 +40,7 @@ export interface Niche {
 export interface Lead {
   id: string;
   userId: string;
+  pipelineId: string;
   nicheId: string;
   crawlSessionId: string | null;
   brandName: string;
@@ -32,6 +55,10 @@ export interface Lead {
   dedupHash: string;
   socialMediaGapScore: number;
   status: 'Qualified' | 'Pitched' | 'Failed';
+  isSandbox?: boolean;
+  dispatchStatus?: 'pending_approval' | 'approved';
+  sandboxRejected?: boolean;
+  originalGeneratedPitch?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -49,18 +76,33 @@ export interface PitchEvaluation {
   createdAt: Timestamp;
 }
 
+export interface AgentLog {
+  timestamp: string;
+  agentRole:
+    | 'strategist'
+    | 'scraper'
+    | 'auditor'
+    | 'analyst'
+    | 'copywriter'
+    | 'system';
+  narrative: string;
+}
+
 export interface CrawlSession {
   id: string;
   userId: string;
+  pipelineId: string;
   nicheId: string;
   targetUrls: string[];
   discoveredBrands: string[];
   leadsCreated: number;
   leadsQualified: number;
   agentReasoning: string;
-  sessionStatus: 'Running' | 'Completed' | 'Failed';
+  sessionStatus: 'Running' | 'Completed' | 'Failed' | 'Stopped';
   startedAt: Timestamp;
   completedAt: Timestamp | null;
+  agentLogs?: AgentLog[];
+  isSandbox?: boolean;
 }
 
 export interface DispatchLog {
@@ -92,6 +134,12 @@ export interface SystemSettings {
   dispatchBatchSize: number;
   crawlScheduleHour: number; // 0-23 UTC
   dispatchScheduleHour: number; // 0-23 UTC
+  apiKeys?: {
+    openAi?: string;
+    gemini?: string;
+    firecrawl?: string;
+    unipile?: string;
+  };
   updatedAt: Timestamp;
 }
 
@@ -112,6 +160,7 @@ export interface Connection {
 export interface FeedbackSignal {
   id: string;
   userId: string;
+  pipelineId: string;
   leadId: string;
   nicheId: string;
   outcome: 'Closed' | 'Rejected' | 'Ghosted' | 'Negotiating';
@@ -119,5 +168,16 @@ export interface FeedbackSignal {
   productPrice: number;
   gapScoreAtPitch: number;
   notes: string | null;
+  aiAdjustmentLog?: string;
   recordedAt: Timestamp;
+}
+
+export interface IntelligenceRegistry {
+  id: string;
+  userId: string;
+  pipelineId: string; // Typically map to a nicheId or an overall setting ID
+  agentRole: 'strategist' | 'scraper' | 'auditor' | 'analyst' | 'copywriter';
+  blobUrl: string;
+  version: number;
+  lastUpdated: Timestamp;
 }

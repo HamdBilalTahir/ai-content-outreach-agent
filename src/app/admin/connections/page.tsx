@@ -48,7 +48,7 @@ export default async function ConnectPage({
       countryCode: resolvedSearchParams.countryCode || '',
     });
     // Redirect to clear the searchParams
-    redirect('/admin/connect');
+    redirect('/admin/connections');
   } else if (resolvedSearchParams?.success === 'true' && accounts.length > 0) {
     const latestAccount = accounts[0];
     await createOrUpdateConnection(userId, {
@@ -62,7 +62,7 @@ export default async function ConnectPage({
       countryCode: resolvedSearchParams.countryCode || '',
     });
     // Redirect to clear the searchParams
-    redirect('/admin/connect');
+    redirect('/admin/connections');
   }
 
   // Fetch the primary connection

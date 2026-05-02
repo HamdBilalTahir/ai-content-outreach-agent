@@ -1,8 +1,175 @@
-## 🗓️ **2026-05-02**
+## 🗓️ **2026-05-03**
 
 ---
 
 ### ✨ Features
+
+---
+
+> ### Multi-Pipeline Architecture & Cross-Pipeline Deduplication
+>
+> - **What changed:** Introduced a "Pipelines Control Room" where users can manage independent autonomous workflows. Core entities (Niches, Leads, Sessions, Feedback) now require a `pipelineId`. Background cron jobs strictly execute only for pipelines in the `running` state. Added a LangGraph node `globalDeduplicationNode` to inherently skip targets previously contacted by ANY pipeline unless `overrideGlobalDeduplication` is explicitly enabled in the Pipeline settings.
+> - **Why:** Allows users to run multiple isolated campaigns (e.g. "Roofing" vs "SaaS") without crossing wires, while structurally preventing spam through global collision avoidance.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `lib/db/pipelines.ts`
+>   - `src/app/admin/pipelines/page.tsx`
+>   - `src/app/admin/pipelines/PipelinesManager.tsx`
+>   - `src/app/api/admin/pipelines/route.ts`
+>   - `src/app/api/cron/crawl/route.ts`
+>   - `src/app/api/cron/dispatch/route.ts`
+>   - `lib/pipeline/runPipeline.ts`
+
+---
+
+> ### Global Integrations & Pipeline Guardrails
+>
+> - **What changed:** Added Global API Keys (OpenAI, Gemini, Firecrawl, Unipile) to SystemSettings. Introduced Pipeline Guardrails (Max Daily Crawls, Max Daily Dispatches, Min AI Gap Score) configurable per Niche. Updated cron jobs (`crawl` and `dispatch`) to strictly enforce these volume limits and quality thresholds before any execution.
+> - **Why:** Protects against runaway API costs, ensures minimum pitch quality, and enables flexible system-wide integration management.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `src/app/admin/settings/SettingsManager.tsx`
+>   - `src/app/admin/niches/NichesManager.tsx`
+>   - `src/app/api/admin/niches/route.ts`
+>   - `src/app/api/cron/crawl/route.ts`
+>   - `src/app/api/cron/dispatch/route.ts`
+>   - `lib/services/whatsappDispatcher.ts`
+
+---
+
+> ### Global Connections Manager & Health Checks
+>
+> - **What changed:** Updated the Connections database and UI to support multiple Unipile accounts, displaying all active outreach numbers and their status. Implemented a `/api/cron/health` background utility to ping Unipile and sync disconnected states back to Firestore.
+> - **Why:** Allows managing multiple sender identities globally and provides an automated health-check to handle token invalidations or connection drops seamlessly.
+> - **Files:**
+>   - `lib/db/connections.ts`
+>   - `src/app/api/admin/connections/route.ts`
+>   - `src/app/api/cron/health/route.ts`
+
+---
+
+> ### Read-Only Leads Table with Inline Feedback
+>
+> - **What changed:** Updated the Leads workspace to include a "Teach AI" column featuring quick-action badge buttons (Closed, Rejected, Ghosted). Clicking a badge opens an inline 3-second disappearing popover where users can type contextual notes. Uses the `/api/admin/feedback` endpoint to instantly log FeedbackSignals without page redirects.
+> - **Why:** Makes the process of logging outcomes and providing contextual feedback frictionless for users, building up the data required by the Feedback Loop agent.
+> - **Files:**
+>   - `src/app/admin/leads/page.tsx`
+>   - `src/app/admin/leads/LeadRow.tsx`
+
+---
+
+> ### Niche Intelligence Dashboard & Feedback Audit Ledger
+>
+> - **What changed:** Exposed the AI's reasoning directly in the UI. The Niches Manager now displays a textual "AI Strategy Note" for every niche, explaining its priority. The Outcomes Logger now includes a "Feedback Audit Ledger" at the bottom of the page, showing the timeline of manual signals vs explicit AI adjustments (like decreased priorities and added blacklisted signals).
+> - **Why:** Creates transparency in an autonomous pipeline, letting the Overseer understand exactly why the system is targeting a market, and proving that human inputs directly alter agent behaviors.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `lib/agents/feedbackLoopAgent.ts`
+>   - `src/app/admin/niches/NichesManager.tsx`
+>   - `src/app/admin/leads/outcomes/page.tsx`
+
+---
+
+> ### Agent Playbooks (Vercel Blob Simple RAG)
+>
+> - **What changed:** Introduced autonomous Agent Playbooks stored as raw Markdown in Vercel Blob. A new Learner Agent (`learnerAgent.ts`) triggers in the background after every manual FeedbackSignal to synthesize the feedback and rewrite the specific playbook files. The LangGraph orchestrator (`runPipeline.ts`) fetches these playbooks at execution time and injects them directly into the agent prompts as "Simple RAG". Created an "Intelligence Hub" UI (`/admin/intelligence`) for the Overseer to read these living documents.
+> - **Why:** Replaces rigid database logic with a flexible, self-improving memory bank that allows specific agent personas to continuously adapt their strategies to human feedback without bloating the database.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `lib/db/intelligence.ts`
+>   - `lib/services/blobStorage.ts`
+>   - `lib/agents/learnerAgent.ts`
+>   - `lib/pipeline/runPipeline.ts`
+>   - `lib/services/geminiPitchGenerator.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `src/app/api/admin/feedback/route.ts`
+>   - `src/app/admin/intelligence/page.tsx`
+>   - `src/app/admin/intelligence/PlaybookViewer.tsx`
+
+---
+
+> ### Sandbox Initialization, Pipeline Binding & Inspection Modals
+>
+> - **What changed:** Added a setup modal to create a Pipeline before Sandbox runs, bound all AI operations to the pipelineId, and built inspection modals for active playbooks and full message drafts.
+> - **Why:** Allows users to clearly organize memory per campaign, inspect AI logic visually, and safely override generated pitches before dispatches.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/api/admin/pipelines/route.ts`
+>   - `lib/types/index.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `lib/agents/feedbackLoopAgent.ts`
+
+---
+
+> ### Sandbox Lead Promotion & Database Cleanliness
+>
+> - **What changed:** Restructured database logic using compound IDs so Sandbox Candidates write to an isolated subcollection (`pipelines/{pipelineId}/sandbox_runs/{runId}/sandbox_candidates`) by default, keeping the main leads list pristine. Updated the `/api/admin/dispatch-manual` endpoint so explicitly approved candidates are dynamically promoted into the main `leads` collection before dispatching, while unapproved "junk" candidates stay in the quarantine zone purely for backend AI Learner training via the End-of-Run Synthesizer endpoint.
+> - **Why:** Maintains absolute data integrity. Prevents thousands of failed or unapproved Sandbox "junk" leads from cluttering the primary CRM, while preserving them implicitly as valuable negative-action training data.
+> - **Files:**
+>   - `lib/db/leads.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/dispatch-manual/route.ts`
+>   - `src/app/api/admin/synthesize-run/route.ts`
+
+---
+
+> ### Sandbox Data Hierarchy & End-of-Run Intelligence Synthesis
+>
+> - **What changed:** Re-architected Sandbox data to write to a dedicated subcollection (`pipelines/{pipelineId}/sandbox_runs/{runId}`) instead of mixing with automated crawl sessions. Added implicit feedback UI inside the Sandbox (Reject button, Edit drafts) and built a `/api/admin/synthesize-run` endpoint. This triggers the Learner Agent to batch process all human actions (approvals, rejections, copy edits) and explicitly rewrite Vercel Blob Playbooks at the end of the run.
+> - **Why:** Closes the Sandbox training loop. Instead of just testing, user actions implicitly teach the AI what targets to avoid and how to write better pitches, continuously improving the Playbooks via a cost-effective batch RAG update.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/synthesize-run/route.ts`
+>   - `lib/db/crawlSessions.ts`
+>   - `lib/types/index.ts`
+>   - `lib/agents/learnerAgent.ts`
+
+## 🗓️ **2026-05-02**
+
+---
+
+### 💅 Styling and UI Improvements
+
+---
+
+> ### Sidebar & Navigation Overhaul
+>
+> - **What changed:** Reorganized the sidebar into "Analytics", "AI Strategy", and "The Engine Room". Consolidated "Outcome Logger" into the Leads workspace. Created separate navigation items for "Manual Test Crawl" (`/admin/sessions`), "Connections" (`/admin/connections`), and "Settings & Integrations" (`/admin/settings`). Renamed specific links like "Niches" to "Niche Intelligence".
+> - **Why:** Reflects the workflow of an Overseer managing an autonomous system, making navigation more intuitive and logically grouped.
+> - **Files:**
+>   - `src/app/admin/layout.tsx`
+>   - `src/app/admin/SidebarNav.tsx`
+>   - `src/app/admin/leads/page.tsx`
+>   - `src/app/admin/sessions/page.tsx`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/admin/connections/page.tsx`
+>   - `src/app/admin/connections/ConnectManager.tsx`
+>   - `src/app/admin/settings/SettingsManager.tsx`
+
+---
+
+### ✨ Features
+
+---
+
+> ### Multi-Agent Sandbox Diagnostics Interface
+>
+> - **What changed:** Upgraded the `/admin/sessions` UI to visualize the LangGraph pipeline as a collaborative workspace of AI personas (The Strategist, Scraper, Auditor, Analyst, and Copywriter). Logs are now structured by `agentRole` and `narrative` rather than generic strings. Prompt engineering was updated to output distinct narrative rationales. The Results Tray now holds Sandbox leads in a `pending_approval` state, allowing the Overseer to manually select and dispatch them via a new `/api/admin/dispatch-manual` endpoint.
+> - **Why:** Builds deep trust by exposing the "why" behind the AI's logic through narrative personas, while creating a safe manual review loop for generated pitches before dispatch.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `lib/db/leads.ts`
+>   - `lib/db/crawlSessions.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `lib/pipeline/runPipeline.ts`
+>   - `lib/services/geminiPitchGenerator.ts`
+>   - `lib/services/whatsappDispatcher.ts`
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/api/cron/dispatch/route.ts`
+>   - `src/app/api/admin/dispatch-manual/route.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
 
 ---
 

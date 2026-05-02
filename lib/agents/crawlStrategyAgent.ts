@@ -57,8 +57,13 @@ function buildFeedbackSummary(signals: FeedbackSignal[]): string {
 function buildPrompt(
   niches: Niche[],
   feedbackSummary: string,
-  today: string
+  today: string,
+  playbooks?: Record<string, string>
 ): string {
+  const strategistPlaybook = playbooks?.['strategist']
+    ? `\n\n## Strategist Playbook (Learned Rules)\n${playbooks['strategist']}`
+    : '';
+
   const nicheList = niches
     .map(
       (n) => `- ID: ${n.id}
@@ -80,10 +85,10 @@ Goal: Discover 30–50 qualified brand leads across the most promising niches.
 ${nicheList}
 
 ## Recent Feedback Signals
-${feedbackSummary}
+${feedbackSummary}${strategistPlaybook}
 
 ## Instructions
-Analyze the niches and feedback data. Select the best niches to target today based on close rate, gap score, product price, and crawl priority. For each selected niche, suggest specific URLs to crawl (beyond the seed URLs if useful) and list content/product signals that indicate a high-quality lead.
+Analyze the niches and feedback data (and strictly adhere to any rules in the Strategist Playbook). Select the best niches to target today based on close rate, gap score, product price, and crawl priority. For each selected niche, suggest specific URLs to crawl (beyond the seed URLs if useful) and list content/product signals that indicate a high-quality lead.
 
 Respond ONLY with a valid JSON object — no markdown, no explanation outside the JSON:
 {
@@ -100,16 +105,45 @@ Respond ONLY with a valid JSON object — no markdown, no explanation outside th
 }
 
 export async function runCrawlStrategyAgent(
-  userId: string
+  userId: string,
+  forceNicheId?: string,
+  isSandbox?: boolean,
+  pipelineId?: string
 ): Promise<CrawlStrategyResult> {
-  const [niches, feedbackSignals] = await Promise.all([
+  // Fetch playbooks for RAG
+  const { getAllIntelligenceForPipeline } = await import('../db/intelligence');
+  const { getPlaybook } = await import('../services/blobStorage');
+
+  const activePipelineId = pipelineId || 'default-pipeline';
+  const registries = await getAllIntelligenceForPipeline(
+    userId,
+    activePipelineId
+  );
+  const playbooks: Record<string, string> = {};
+  for (const reg of registries) {
+    try {
+      playbooks[reg.agentRole] = await getPlaybook(reg.blobUrl);
+    } catch (e) {
+      console.warn(`Failed to fetch playbook for ${reg.agentRole}`);
+    }
+  }
+
+  let [niches, feedbackSignals] = await Promise.all([
     getAllNiches(userId),
     getAllFeedbackSignals(userId),
   ]);
 
+  if (forceNicheId) {
+    niches = niches.filter((n) => n.id === forceNicheId);
+  }
+
   const today = new Date().toISOString().split('T')[0];
   const feedbackSummary = buildFeedbackSummary(feedbackSignals);
-  const prompt = buildPrompt(niches, feedbackSummary, today);
+  const prompt =
+    buildPrompt(niches, feedbackSummary, today) +
+    (forceNicheId
+      ? `\n\nCRITICAL: You MUST select only the niche provided and generate targets for it.`
+      : '');
 
   const result = await model.generateContent(prompt);
   const raw = result.response.text().trim();
@@ -137,9 +171,18 @@ export async function runCrawlStrategyAgent(
   }
 
   const selectedNicheId = parsed.selectedNiches[0] ?? '';
+  const selectedNiche = niches.find((n) => n.id === selectedNicheId);
+
+  if (selectedNicheId) {
+    const { updateNiche } = await import('../db/niches');
+    await updateNiche(userId, selectedNicheId, {
+      aiReasoning: parsed.agentReasoning,
+    });
+  }
 
   const crawlSessionId = await createCrawlSession({
     userId,
+    pipelineId: activePipelineId,
     nicheId: selectedNicheId,
     targetUrls: parsed.crawlTargets.flatMap((t) => t.urls),
     discoveredBrands: [],
@@ -148,6 +191,14 @@ export async function runCrawlStrategyAgent(
     agentReasoning: parsed.agentReasoning,
     sessionStatus: 'Running',
     completedAt: null,
+    isSandbox: isSandbox || false,
+    agentLogs: [
+      {
+        timestamp: new Date().toISOString(),
+        agentRole: 'strategist',
+        narrative: parsed.agentReasoning,
+      },
+    ],
   });
 
   return {

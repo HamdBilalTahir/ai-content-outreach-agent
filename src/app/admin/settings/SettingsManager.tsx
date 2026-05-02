@@ -40,15 +40,27 @@ export default function SettingsManager({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    setSettings((prev) => ({
-      ...prev,
-      [name]:
-        type === 'checkbox'
-          ? checked
-          : type === 'number'
-            ? Number(value)
-            : value,
-    }));
+
+    if (name.startsWith('apiKeys.')) {
+      const key = name.split('.')[1];
+      setSettings((prev) => ({
+        ...prev,
+        apiKeys: {
+          ...prev.apiKeys,
+          [key]: value,
+        },
+      }));
+    } else {
+      setSettings((prev) => ({
+        ...prev,
+        [name]:
+          type === 'checkbox'
+            ? checked
+            : type === 'number'
+              ? Number(value)
+              : value,
+      }));
+    }
   };
 
   return (
@@ -74,7 +86,7 @@ export default function SettingsManager({
             </p>
           </div>
           <a
-            href="/admin/connect"
+            href="/admin/connections"
             className="text-sm font-medium text-green-600 hover:text-green-500"
           >
             Manage &rarr;
@@ -91,7 +103,7 @@ export default function SettingsManager({
             </p>
           </div>
           <a
-            href="/admin/connect"
+            href="/admin/connections"
             className="text-sm font-medium text-yellow-600 hover:text-yellow-500"
           >
             Connect &rarr;
@@ -138,6 +150,79 @@ export default function SettingsManager({
             >
               Enable Auto-Dispatcher
             </label>
+          </div>
+        </div>
+
+        {/* Global API Keys */}
+        <div className="space-y-4 border-b border-gray-200 pb-6">
+          <h2 className="text-sm font-semibold text-gray-900">
+            Global Integrations (API Keys)
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="openAi"
+                className="block text-sm font-medium leading-6 text-gray-900"
+              >
+                OpenAI API Key
+              </label>
+              <input
+                type="password"
+                name="apiKeys.openAi"
+                id="openAi"
+                value={settings.apiKeys?.openAi || ''}
+                onChange={handleChange}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="gemini"
+                className="block text-sm font-medium leading-6 text-gray-900"
+              >
+                Gemini API Key
+              </label>
+              <input
+                type="password"
+                name="apiKeys.gemini"
+                id="gemini"
+                value={settings.apiKeys?.gemini || ''}
+                onChange={handleChange}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="firecrawl"
+                className="block text-sm font-medium leading-6 text-gray-900"
+              >
+                Firecrawl/Apify API Key
+              </label>
+              <input
+                type="password"
+                name="apiKeys.firecrawl"
+                id="firecrawl"
+                value={settings.apiKeys?.firecrawl || ''}
+                onChange={handleChange}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="unipile"
+                className="block text-sm font-medium leading-6 text-gray-900"
+              >
+                Unipile API Key
+              </label>
+              <input
+                type="password"
+                name="apiKeys.unipile"
+                id="unipile"
+                value={settings.apiKeys?.unipile || ''}
+                onChange={handleChange}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+              />
+            </div>
           </div>
         </div>
 
@@ -257,58 +342,6 @@ export default function SettingsManager({
             className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
           >
             {isSubmitting ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
-      </div>
-
-      {/* Manual Triggers */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">Manual Triggers</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Trigger the pipelines immediately, bypassing the automated schedule.
-          Note: Ensure pipelines are enabled above.
-        </p>
-        <div className="flex space-x-4">
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const res = await fetch('/api/admin/run-crawl', {
-                  method: 'POST',
-                });
-                const data = await res.json();
-                alert(
-                  data.message ||
-                    (data.success ? 'Crawl finished!' : 'Crawl failed')
-                );
-              } catch (e) {
-                alert('Request failed');
-              }
-            }}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-          >
-            Run Crawl Now
-          </button>
-
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const res = await fetch('/api/admin/run-dispatch', {
-                  method: 'POST',
-                });
-                const data = await res.json();
-                alert(
-                  data.message ||
-                    (data.success ? 'Dispatch finished!' : 'Dispatch failed')
-                );
-              } catch (e) {
-                alert('Request failed');
-              }
-            }}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-          >
-            Run Dispatch Now
           </button>
         </div>
       </div>

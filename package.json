@@ -17,6 +17,7 @@
     "@langchain/google-genai": "^2.1.30",
     "@langchain/langgraph": "^1.2.9",
     "@mendable/firecrawl-js": "^4.21.0",
+    "@vercel/blob": "^2.3.3",
     "apify-client": "^2.23.1",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.8.0",

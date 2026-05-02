@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Niche not found' }, { status: 404 });
     }
 
-    const signalId = await createFeedbackSignal({
+    const signal = {
       userId,
       leadId,
       nicheId: lead.nicheId,
@@ -43,13 +43,17 @@ export async function POST(req: Request) {
       gapScoreAtPitch: lead.socialMediaGapScore ?? 0,
       notes: notes || null,
       recordedAt: FieldValue.serverTimestamp() as Timestamp,
-    });
+    };
 
-    // Mark lead as no longer just 'Pitched' so it disappears from the queue.
-    // Wait, the requirements don't explicitly say to change the lead status,
-    // they say "After logging, the card disappears from the queue".
-    // The queue shows leads with status 'Pitched' that do not yet have a FeedbackSignal.
-    // If we just create the FeedbackSignal, it will be excluded.
+    const signalId = await createFeedbackSignal(signal as any);
+
+    // After logging feedback, run the Learner Agent to update Playbooks
+    // We do this in the background to not block the UI response
+    const { runLearnerAgent } =
+      await import('../../../../../lib/agents/learnerAgent');
+    runLearnerAgent(userId, 'default-pipeline', signal as any).catch((err) => {
+      console.error('Failed to run Learner Agent after feedback:', err);
+    });
 
     return NextResponse.json({ success: true, signalId });
   } catch (error: any) {

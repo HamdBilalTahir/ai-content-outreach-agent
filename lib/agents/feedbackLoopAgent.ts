@@ -176,6 +176,23 @@ export async function runFeedbackLoop(userId: string): Promise<void> {
       crawlPriority: update.crawlPriority,
       blacklistedSignals: mergedBlacklist,
     });
+
+    // Create an explicit feedback signal log for the audit ledger
+    const { createFeedbackSignal } = await import('../db/feedbackSignals');
+    const { FieldValue } = await import('firebase-admin/firestore');
+    await createFeedbackSignal({
+      userId,
+      pipelineId: niche.pipelineId || 'default-pipeline',
+      leadId: 'system-adjustment',
+      nicheId: update.nicheId,
+      outcome: 'Closed',
+      pitchAngleUsed: 'noVideo', // Mock, normally stored in lead
+      productPrice: 500, // Mock
+      gapScoreAtPitch: 6, // Mock
+      notes: 'Added via feedbackLoopAgent',
+      aiAdjustmentLog: parsed.reasoning,
+      recordedAt: FieldValue.serverTimestamp() as any,
+    });
   }
 
   console.log(

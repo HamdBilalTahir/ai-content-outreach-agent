@@ -6,27 +6,30 @@ Built on **Next.js 16 (App Router)** and **Firebase**, orchestrated via **LangGr
 
 ## Features
 
-- **Automated Crawl Strategy**: AI agents dynamically select niches to crawl based on historical close rates, gap scores, and product pricing.
+- **Multi-Pipeline Architecture**: Manage multiple, independent autonomous workflows safely. Each pipeline runs in isolation, avoiding target collisions through a global deduplication engine.
 - **Intelligent Prospecting Pipeline**:
   - Scrapes target websites via Firecrawl JS.
   - Audits brand Instagram profiles via Apify.
   - Evaluates brand visual content poverty using Gemini (`gemini-3.1-flash-live-preview`).
-- **Targeted WhatsApp Dispatch**: Generates customized WhatsApp openers and automatically queues them for dispatch.
-- **Continuous Feedback Loop**: Tracks response outcomes (Closed, Rejected, Ghosted) to adjust crawl priorities and blacklist poor targeting signals.
-- **Admin Dashboard**: Full UI to configure niches, track pipeline leads, assess AI evaluation reasoning, and review dispatch logs.
-- **Multi-Tenant Ready**: Integrates Firebase Authentication with secure Session Cookie parsing to maintain partitioned lead tracking.
+- **Autonomous Playbooks (Simple RAG)**: The AI agents (Strategist, Scraper, Auditor, Copywriter) consult raw Markdown Playbooks stored in Vercel Blob before taking action.
+- **Sandbox Training Environment**: Test pipelines safely inside a manual diagnostic UI. Human interactions (like explicitly rejecting targets or modifying drafted text) are stored in an isolated Quarantine Zone. At the end of the run, a Learner Agent synthesizes these implicit human signals and physically rewrites the Markdown Playbooks, enabling organic AI adaptation without manual tuning.
+- **Continuous Feedback Loop**: Tracks real-world CRM outcomes (Closed, Rejected, Ghosted) to continuously hardcode Niche priority adjustments and build market-specific blacklists via the Data Scientist Feedback Loop agent.
+- **Targeted WhatsApp Dispatch**: Features native integration with Unipile. Automatically provisions hosted WhatsApp connections and manages dynamic, throttled payload dispatching.
+- **Global Guardrails**: Centrally managed API keys and automated Niche-level throttle caps ensure API cost protection and minimum pitch quality thresholds.
 
 ## Architecture
 
-Please review [Architecture.md](Architecture.md) for a comprehensive deep dive into the system's structure, database schemas, and AI pipeline layouts.
+Please review [Architecture.md](Architecture.md) for a comprehensive deep dive into the system's structure, multi-pipeline containment logic, and AI module relations.
 
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router) + React 19
 - **Database / Auth**: Firebase Admin SDK & Firebase Auth
+- **Memory Storage**: Vercel Blob (`@vercel/blob`)
 - **AI Models**: Google Gemini via `@langchain/google-genai`
 - **Orchestration**: LangGraph (`@langchain/langgraph`)
 - **Scraping Tools**: FireCrawl (`@mendable/firecrawl-js`) & Apify Client
+- **Messaging Integration**: Unipile API
 - **Styling**: Tailwind CSS v4
 
 ## Getting Started
@@ -36,7 +39,7 @@ Please review [Architecture.md](Architecture.md) for a comprehensive deep dive i
 - Node.js ≥20
 - Yarn package manager
 - Firebase Project (Firestore + Authentication)
-- API Keys for Google Gemini, Apify, and Firecrawl
+- API Keys for Google Gemini, Apify, Firecrawl, Unipile, and Vercel Blob Read/Write tokens.
 
 ### Environment Setup
 
@@ -51,8 +54,9 @@ Please review [Architecture.md](Architecture.md) for a comprehensive deep dive i
    - `GEMINI_API_KEY`
    - `FIRECRAWL_API_KEY`
    - `APIFY_API_TOKEN`
+   - `UNIPILE_API_KEY` & `UNIPILE_DSN`
+   - `BLOB_READ_WRITE_TOKEN`
    - `CRON_SECRET`
-   - `WHATSAPP_WEBHOOK_URL` & `WHATSAPP_WEBHOOK_SECRET`
 
 ### Installation & Execution
 
