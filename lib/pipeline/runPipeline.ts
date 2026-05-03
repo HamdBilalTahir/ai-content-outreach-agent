@@ -5,7 +5,6 @@ import { auditInstagram } from '../services/instagramAuditor';
 import { generatePitch } from '../services/geminiPitchGenerator';
 import { createLead } from '../db/leads';
 import { createPitchEvaluation } from '../db/pitchEvaluations';
-import { getNicheById } from '../db/niches';
 import { getCrawlSessionStatus, appendAgentLog } from '../db/crawlSessions';
 import type { ScrapedBrand } from '../services/websiteScraper';
 import type { InstagramAudit } from '../services/instagramAuditor';
@@ -413,7 +412,7 @@ export async function runPipeline(
     for (const reg of registries) {
       try {
         playbooks[reg.agentRole] = await getPlaybook(reg.blobUrl);
-      } catch (e) {
+      } catch {
         console.warn(`Failed to fetch playbook for ${reg.agentRole}`);
       }
     }

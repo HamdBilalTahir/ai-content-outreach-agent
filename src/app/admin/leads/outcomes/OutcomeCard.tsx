@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Lead } from '../../../../../lib/types';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 export default function OutcomeCard({ lead }: { lead: Lead }) {
   const router = useRouter();
@@ -70,11 +71,13 @@ export default function OutcomeCard({ lead }: { lead: Lead }) {
       {/* Product Image and Pitch */}
       <div className="flex flex-col md:flex-row gap-6">
         {lead.targetProductImageUrl && (
-          <div className="flex-shrink-0">
-            <img
+          <div className="flex-shrink-0 relative h-32 w-32 rounded-lg overflow-hidden border border-gray-200">
+            <Image
               src={lead.targetProductImageUrl}
               alt={lead.targetProductName || 'Product'}
-              className="h-32 w-32 rounded-lg object-cover border border-gray-200"
+              fill
+              className="object-cover"
+              unoptimized
             />
           </div>
         )}

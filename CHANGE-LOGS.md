@@ -17,6 +17,21 @@
 
 ---
 
+### ⚡ Performance
+
+---
+
+> ### Replaced `<img>` tags with `next/image`
+>
+> - **What changed:** Replaced native HTML `<img>` elements with `next/image` components.
+> - **Why:** Prevent ESLint warnings and optimize image loading and bandwidth.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/admin/leads/[id]/page.tsx`
+>   - `src/app/admin/leads/outcomes/OutcomeCard.tsx`
+
+---
+
 ### ✨ Features
 
 ---

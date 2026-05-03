@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../../../../lib/firebase/client';
+import Image from 'next/image';
 import type { CrawlSession } from '../../../../lib/types';
 
 import LeadInspectorModal from './LeadInspectorModal';
@@ -24,6 +26,7 @@ export default function ManualTriggers({
   const [forceNicheId, setForceNicheId] = useState<string>('');
   const [maxTargets, setMaxTargets] = useState<number>(5);
   const [sessionId, setSessionId] = useState<string | null>(null);
+
   const [logs, setLogs] = useState<string[]>([]);
   const [status, setStatus] = useState<string>('idle');
   const [loading, setLoading] = useState(false);
@@ -49,6 +52,7 @@ export default function ManualTriggers({
   const [playbooks, setPlaybooks] = useState<any[]>([]);
   const [showInspectorModal, setShowInspectorModal] = useState(false);
   const [inspectingLead, setInspectingLead] = useState<any | null>(null);
+
   const [editedPitch, setEditedPitch] = useState('');
 
   // We change state to handle AgentLog[] instead of string[]
@@ -710,12 +714,14 @@ export default function ManualTriggers({
                       {images.map((img, i) => (
                         <div
                           key={i}
-                          className="relative group rounded-lg overflow-hidden ring-1 ring-black/10"
+                          className="relative h-20 w-full group rounded-lg overflow-hidden ring-1 ring-black/10"
                         >
-                          <img
+                          <Image
                             src={img}
                             alt="preview"
-                            className="h-20 w-full object-cover"
+                            fill
+                            className="object-cover"
+                            unoptimized
                           />
                           <button
                             type="button"

@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { getLeadById } from '../../../../../lib/db/leads';
 import { getPitchEvaluationByLeadId } from '../../../../../lib/db/pitchEvaluations';
 import { getDispatchLogsByLeadId } from '../../../../../lib/db/dispatchLogs';
@@ -122,11 +123,15 @@ export default async function LeadDetailPage({
               <span className="text-sm font-medium text-gray-500">
                 Product Image
               </span>
-              <img
-                src={lead.targetProductImageUrl}
-                alt={lead.targetProductName || 'Product'}
-                className="mt-2 h-32 w-32 rounded-md object-cover border border-gray-200"
-              />
+              <div className="mt-2 relative h-32 w-32 rounded-md overflow-hidden border border-gray-200">
+                <Image
+                  src={lead.targetProductImageUrl}
+                  alt={lead.targetProductName || 'Product'}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
+              </div>
             </div>
           )}
         </section>

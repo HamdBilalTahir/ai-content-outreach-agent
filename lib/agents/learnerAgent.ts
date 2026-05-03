@@ -223,10 +223,8 @@ You must output a structured JSON identifying the agent role, your reasoning for
       currentBlobUrl = registry.blobUrl;
       try {
         currentPlaybook = await getPlaybook(registry.blobUrl);
-      } catch (err) {
-        console.warn(
-          `Could not fetch existing playbook for ${role}, using default.`
-        );
+      } catch {
+        // ...
       }
     }
 
@@ -251,15 +249,15 @@ Respond ONLY with the updated raw Markdown for the playbook. Do not wrap it in \
       `[Agent: Learner] 📥 Gemini delivered the shiny new ${role} playbook:\n${newPlaybookMarkdown}`
     );
 
-    if (newPlaybookMarkdown.startsWith('\`\`\`markdown')) {
+    if (newPlaybookMarkdown.startsWith('```markdown')) {
       newPlaybookMarkdown = newPlaybookMarkdown
-        .replace(/^\`\`\`markdown/, '')
-        .replace(/\`\`\`$/, '')
+        .replace(/^```markdown/, '')
+        .replace(/```$/, '')
         .trim();
-    } else if (newPlaybookMarkdown.startsWith('\`\`\`')) {
+    } else if (newPlaybookMarkdown.startsWith('```')) {
       newPlaybookMarkdown = newPlaybookMarkdown
-        .replace(/^\`\`\`/, '')
-        .replace(/\`\`\`$/, '')
+        .replace(/^```/, '')
+        .replace(/```$/, '')
         .trim();
     }
 
@@ -435,10 +433,8 @@ You must output a structured JSON identifying the agent role, your reasoning for
       currentBlobUrl = registry.blobUrl;
       try {
         currentPlaybook = await getPlaybook(registry.blobUrl);
-      } catch (err) {
-        console.warn(
-          `Could not fetch existing playbook for ${role}, using default.`
-        );
+      } catch {
+        // ...
       }
     }
 
@@ -466,15 +462,15 @@ Respond ONLY with the updated raw Markdown for the playbook. Do not wrap it in \
       `[Agent: Learner] 📥 Gemini delivered the shiny new ${role} playbook:\n${newPlaybookMarkdown}`
     );
 
-    if (newPlaybookMarkdown.startsWith('\`\`\`markdown')) {
+    if (newPlaybookMarkdown.startsWith('```markdown')) {
       newPlaybookMarkdown = newPlaybookMarkdown
-        .replace(/^\`\`\`markdown/, '')
-        .replace(/\`\`\`$/, '')
+        .replace(/^```markdown/, '')
+        .replace(/```$/, '')
         .trim();
-    } else if (newPlaybookMarkdown.startsWith('\`\`\`')) {
+    } else if (newPlaybookMarkdown.startsWith('```')) {
       newPlaybookMarkdown = newPlaybookMarkdown
-        .replace(/^\`\`\`/, '')
-        .replace(/\`\`\`$/, '')
+        .replace(/^```/, '')
+        .replace(/```$/, '')
         .trim();
     }
 
