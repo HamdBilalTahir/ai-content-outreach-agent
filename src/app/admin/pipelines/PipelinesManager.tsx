@@ -226,6 +226,21 @@ export default function PipelinesManager({
               </span>
             </div>
 
+            {(pipeline.settings as any)?.conceptStrategy && (
+              <div className="mt-4 bg-gray-50 p-3 rounded text-sm text-gray-700">
+                <div className="font-semibold mb-1">Detailed Goal</div>
+                <p className="mb-2 text-xs">{pipeline.description}</p>
+                <div className="font-semibold mb-1">Concept Strategy</div>
+                <p className="mb-2 text-xs">
+                  {(pipeline.settings as any).conceptStrategy}
+                </p>
+                <div className="font-semibold mb-1">Source URLs</div>
+                <p className="text-xs break-all">
+                  {(pipeline.settings as any).sourceUrls}
+                </p>
+              </div>
+            )}
+
             <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center">
               <div className="text-sm text-gray-500">
                 Connection:{' '}

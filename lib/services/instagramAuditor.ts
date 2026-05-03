@@ -31,6 +31,9 @@ export async function auditInstagram(
 ): Promise<InstagramAudit | null> {
   if (!instagramUrl) return null;
 
+  console.log(
+    `\n[API: InstagramAuditor] Auditing Instagram profile: ${instagramUrl}`
+  );
   const username = extractUsername(instagramUrl);
   if (!username) {
     console.error(
@@ -44,14 +47,24 @@ export async function auditInstagram(
   );
 
   try {
+    console.log(
+      `[API: InstagramAuditor] 📤 Summoning Apify bots to investigate @${username}...`
+    );
+    const payload = {
+      directUrls: [`https://www.instagram.com/${username}/`],
+      resultsType: 'posts',
+      resultsLimit: 5,
+    };
+    console.log(
+      `[API: InstagramAuditor] 📤 The Hit List:\n${JSON.stringify(payload, null, 2)}`
+    );
     const run = await Promise.race([
-      apify.actor('apify/instagram-scraper').call({
-        usernames: [username],
-        resultsLimit: 5,
-        resultsType: 'posts',
-      }),
+      apify.actor('apify/instagram-scraper').call(payload),
       timeout,
     ]);
+    console.log(
+      `[API: InstagramAuditor] 📥 Apify bots returned from the mission.`
+    );
 
     if (!run) {
       console.error(`instagramAuditor: Apify timed out for @${username}`);
@@ -59,6 +72,10 @@ export async function auditInstagram(
     }
 
     const { items } = await apify.dataset(run.defaultDatasetId).listItems();
+
+    console.log(
+      `[API: InstagramAuditor] 📥 Unpacking ${items.length} items of intel...`
+    );
 
     if (!items.length) return null;
 
@@ -76,6 +93,9 @@ export async function auditInstagram(
 
     const totalLikes = posts.reduce((sum, p) => sum + p.likeCount, 0);
 
+    console.log(
+      `[API: InstagramAuditor] ✅ Audit finished for @${username}. Posts: ${posts.length}`
+    );
     return {
       postCount: posts.length,
       posts,

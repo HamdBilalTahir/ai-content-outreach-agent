@@ -70,6 +70,32 @@ export async function updateCrawlSession(
   }
 }
 
+export async function markBrandProcessed(
+  id: string,
+  url: string
+): Promise<void> {
+  try {
+    await getDocRef(id).update({
+      processedBrands: FieldValue.arrayUnion(url),
+    });
+  } catch (err) {
+    console.error('markBrandProcessed failed:', err);
+  }
+}
+
+export async function getCrawlSession(
+  id: string
+): Promise<CrawlSession | null> {
+  try {
+    const doc = await getDocRef(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() } as CrawlSession;
+  } catch (err) {
+    console.error('getCrawlSession failed:', err);
+    return null;
+  }
+}
+
 export async function getCrawlSessionStatus(
   id: string
 ): Promise<string | null> {

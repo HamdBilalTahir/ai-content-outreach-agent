@@ -24,17 +24,17 @@ This application is an **AI-driven Content Outreach Agent**. It automates the di
 
 ### What's Included Out of the Box
 
-| Area                | Status   | Details                                                                     |
-| ------------------- | -------- | --------------------------------------------------------------------------- |
-| Framework           | ✅ Ready | Next.js 16 with App Router + React 19                                       |
-| AI Integration      | ✅ Ready | Gemini Models (`gemini-3.1-flash-live-preview`) via `@google/generative-ai` |
-| Agent Orchestration | ✅ Ready | `@langchain/langgraph` for pipelined task execution                         |
-| Web Scraping        | ✅ Ready | FireCrawl JS + Apify Client                                                 |
-| Messaging           | ✅ Ready | Unipile Integration for WhatsApp Dispatch                                   |
-| Database            | ✅ Ready | Firebase Firestore                                                          |
-| Memory Bank         | ✅ Ready | Vercel Blob for Markdown Playbooks (Simple RAG)                             |
-| Authentication      | ✅ Ready | Firebase Auth (Email/Password & Magic Link)                                 |
-| Styling             | ✅ Ready | Tailwind CSS v4 + dark mode                                                 |
+| Area                | Status   | Details                                                              |
+| ------------------- | -------- | -------------------------------------------------------------------- |
+| Framework           | ✅ Ready | Next.js 16 with App Router + React 19                                |
+| AI Integration      | ✅ Ready | Gemini Models (`gemini-3.1-pro-preview`) via `@google/generative-ai` |
+| Agent Orchestration | ✅ Ready | `@langchain/langgraph` for pipelined task execution                  |
+| Web Scraping        | ✅ Ready | FireCrawl JS + Apify Client                                          |
+| Messaging           | ✅ Ready | Unipile Integration for WhatsApp Dispatch                            |
+| Database            | ✅ Ready | Firebase Firestore                                                   |
+| Memory Bank         | ✅ Ready | Vercel Blob for Markdown Playbooks (Simple RAG)                      |
+| Authentication      | ✅ Ready | Firebase Auth (Email/Password & Magic Link)                          |
+| Styling             | ✅ Ready | Tailwind CSS v4 + dark mode                                          |
 
 ---
 
@@ -51,12 +51,12 @@ This application is an **AI-driven Content Outreach Agent**. It automates the di
 
 ### AI & Agent Tooling
 
-| Layer               | Technology                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------ |
-| Main LLM            | Gemini (`gemini-3.1-flash-live-preview`) via `@google/generative-ai` & `@langchain/google-genai` |
-| Agent Orchestration | `@langchain/langgraph`                                                                           |
-| Web Scraping        | `@mendable/firecrawl-js`, `apify-client`                                                         |
-| Integrations        | Unipile (WhatsApp), Vercel Blob (Playbooks)                                                      |
+| Layer               | Technology                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| Main LLM            | Gemini (`gemini-3.1-pro-preview`) via `@google/generative-ai` & `@langchain/google-genai` |
+| Agent Orchestration | `@langchain/langgraph`                                                                    |
+| Web Scraping        | `@mendable/firecrawl-js`, `apify-client`                                                  |
+| Integrations        | Unipile (WhatsApp), Vercel Blob (Playbooks)                                               |
 
 ### Database & Auth
 

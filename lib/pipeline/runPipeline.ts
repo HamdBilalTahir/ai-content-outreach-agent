@@ -48,6 +48,9 @@ async function checkStatus(state: PipelineState) {
 async function globalDeduplicationNode(
   state: PipelineState
 ): Promise<Partial<PipelineState>> {
+  console.log(
+    `[Pipeline Node: globalDeduplicationNode] Checking duplicate for ${state.url}...`
+  );
   await checkStatus(state);
 
   const { getPipelineById } = await import('../db/pipelines');
@@ -72,6 +75,9 @@ async function globalDeduplicationNode(
     .get();
 
   if (!snapshot.empty) {
+    console.log(
+      `[Pipeline Node: globalDeduplicationNode] ⚠️ URL ${state.url} is a duplicate.`
+    );
     if (state.crawlSessionId) {
       await appendAgentLog(
         state.crawlSessionId,
@@ -82,6 +88,9 @@ async function globalDeduplicationNode(
     return { isDuplicate: true };
   }
 
+  console.log(
+    `[Pipeline Node: globalDeduplicationNode] ✅ URL ${state.url} is unique.`
+  );
   return { isDuplicate: false };
 }
 
@@ -95,6 +104,9 @@ function checkDuplicateAfterInitial(
 async function scrapeWebsiteNode(
   state: PipelineState
 ): Promise<Partial<PipelineState>> {
+  console.log(
+    `[Pipeline Node: scrapeWebsiteNode] Scraping website data for ${state.url}...`
+  );
   await checkStatus(state);
   if (state.crawlSessionId)
     await appendAgentLog(
@@ -103,6 +115,26 @@ async function scrapeWebsiteNode(
       `Extracting site architecture from ${state.url}. Passing data to the Auditor.`
     );
   const scrapedData = await scrapeBrandWebsite(state.url);
+
+  if (!scrapedData?.whatsappNumber) {
+    if (!state.isSandbox) {
+      if (state.crawlSessionId) {
+        await appendAgentLog(
+          state.crawlSessionId,
+          'scraper',
+          '🕸️ [The Scraper] Target has no valid phone number. Aborting analysis to save compute.'
+        );
+      }
+    } else {
+      if (state.crawlSessionId) {
+        await appendAgentLog(
+          state.crawlSessionId,
+          'scraper',
+          '🕸️ [The Scraper] Target has no valid phone number. Continuing for Sandbox triage.'
+        );
+      }
+    }
+  }
 
   // Check whatsapp number globally
   if (scrapedData?.whatsappNumber) {
@@ -113,8 +145,8 @@ async function scrapeWebsiteNode(
 
     if (!overrideGlobalDeduplication) {
       const { db } = await import('../firebase/admin');
-      // strict normalize
-      const normalizedPhone = scrapedData.whatsappNumber.replace(/\D/g, '');
+      // keep plus and digits
+      const normalizedPhone = scrapedData.whatsappNumber.replace(/[^\d+]/g, '');
       const snapshot = await db
         .collection('leads')
         .where('whatsappNumber', '==', normalizedPhone)
@@ -131,16 +163,25 @@ async function scrapeWebsiteNode(
           );
         }
         return {
-          scrapedData: { ...scrapedData, whatsappNumber: normalizedPhone },
+          scrapedData: {
+            ...scrapedData,
+            whatsappNumber: normalizedPhone || scrapedData.whatsappNumber,
+          },
           isDuplicate: true,
         };
       }
       return {
-        scrapedData: { ...scrapedData, whatsappNumber: normalizedPhone },
+        scrapedData: {
+          ...scrapedData,
+          whatsappNumber: normalizedPhone || scrapedData.whatsappNumber,
+        },
       };
     }
   }
 
+  console.log(
+    `[Pipeline Node: scrapeWebsiteNode] ✅ Scraping completed for ${state.url}. WhatsApp: ${scrapedData?.whatsappNumber || 'None'}`
+  );
   return { scrapedData };
 }
 
@@ -148,12 +189,32 @@ function checkDuplicateAfterScrape(
   state: PipelineState
 ): typeof END | 'sanitizeImagesNode' {
   if (state.isDuplicate) return END;
+
+  // Fail fast if no phone number
+  if (!state.scrapedData?.whatsappNumber) {
+    // We only fail fast if it's not a sandbox run or if we still want to fail fast for sandbox?
+    // "highly qualified leads missing a phone number should still appear in the UI so the Overseer can manually enter a number."
+    // Wait, if we fail fast after scrape, we won't get a pitch or score, so we won't know if it's highly qualified.
+    // Let me re-read: "If no phone number is found on a website, the system must immediately abort the target. Push a narrative log...
+    // And for 8.5: "highly qualified leads missing a phone number should still appear in the UI so the Overseer can manually enter a number."
+    // Ah, these requirements clash if we drop BEFORE generating the pitch!
+    // But wait, "If is_sandbox == true, do not drop leads with missing phone numbers."
+    // So if isSandbox, we continue, else we drop?
+    // Let's implement that:
+    if (!state.isSandbox) {
+      return END;
+    }
+  }
+
   return 'sanitizeImagesNode';
 }
 
 async function sanitizeImagesNode(
   state: PipelineState
 ): Promise<Partial<PipelineState>> {
+  console.log(
+    `[Pipeline Node: sanitizeImagesNode] Sanitizing images for ${state.url}...`
+  );
   await checkStatus(state);
   if (state.crawlSessionId)
     await appendAgentLog(
@@ -162,14 +223,22 @@ async function sanitizeImagesNode(
       `Cleaning up raw images from ${state.url} to prep for analysis.`
     );
   const raw = state.scrapedData?.imageUrls ?? [];
-  return { sanitizedImages: sanitizeImages(raw) };
+  const sanitizedImages = sanitizeImages(raw);
+
+  console.log(
+    `[Pipeline Node: sanitizeImagesNode] ✅ Sanitized ${sanitizedImages.length} images.`
+  );
+  return { sanitizedImages };
 }
 
 async function auditInstagramNode(
   state: PipelineState
 ): Promise<Partial<PipelineState>> {
-  await checkStatus(state);
   const instagramUrl = state.scrapedData?.instagramUrl ?? null;
+  console.log(
+    `[Pipeline Node: auditInstagramNode] Auditing Instagram for ${instagramUrl || 'Unknown'}...`
+  );
+  await checkStatus(state);
   if (state.crawlSessionId)
     await appendAgentLog(
       state.crawlSessionId,
@@ -177,12 +246,18 @@ async function auditInstagramNode(
       `Running forensics on ${instagramUrl || state.url}. Handing my report to the Lead Analyst.`
     );
   const instagramData = await auditInstagram(instagramUrl);
+  console.log(
+    `[Pipeline Node: auditInstagramNode] ✅ Instagram audit completed. Score/Data gathered.`
+  );
   return { instagramData };
 }
 
 async function generatePitchNode(
   state: PipelineState
 ): Promise<Partial<PipelineState>> {
+  console.log(
+    `[Pipeline Node: generatePitchNode] Generating pitch for ${state.url}...`
+  );
   await checkStatus(state);
 
   const aiEvaluation = await generatePitch({
@@ -206,12 +281,16 @@ async function generatePitchNode(
       `${aiEvaluation.copywriterNarrative || `Drafting outreach message using the ${aiEvaluation.pitchAngle} angle. Pitch finalized and saved to Sandbox Queue.`}`
     );
   }
+  console.log(
+    `[Pipeline Node: generatePitchNode] ✅ Pitch generated. Gap Score: ${aiEvaluation?.socialMediaGapScore}`
+  );
   return { aiEvaluation };
 }
 
 async function saveLeadNode(
   state: PipelineState
 ): Promise<Partial<PipelineState>> {
+  console.log(`[Pipeline Node: saveLeadNode] Saving lead for ${state.url}...`);
   await checkStatus(state);
   if (state.crawlSessionId)
     await appendAgentLog(
@@ -236,6 +315,20 @@ async function saveLeadNode(
 
   const dedupHash = url.toLowerCase().replace(/\/$/, '');
 
+  const hasPhone = !!scrapedData?.whatsappNumber;
+  let finalStatus: any = 'Qualified';
+
+  if (isSandbox && !hasPhone) {
+    finalStatus = 'incomplete';
+    if (crawlSessionId) {
+      await appendAgentLog(
+        crawlSessionId,
+        'system',
+        `🛑 [System] Discarding draft for ${scrapedData?.brandName || url}: No valid phone number located.`
+      );
+    }
+  }
+
   const leadId = await createLead({
     userId,
     pipelineId: state.pipelineId,
@@ -252,9 +345,10 @@ async function saveLeadNode(
     crawlSource,
     dedupHash,
     socialMediaGapScore: aiEvaluation?.socialMediaGapScore ?? 0,
-    status: 'Qualified',
+    status: finalStatus,
     isSandbox,
     dispatchStatus: isSandbox ? 'pending_approval' : undefined,
+    analystNarrative: aiEvaluation?.analystNarrative ?? null,
   });
 
   if (aiEvaluation) {
@@ -272,13 +366,16 @@ async function saveLeadNode(
     });
   }
 
+  console.log(
+    `[Pipeline Node: saveLeadNode] ✅ Lead saved successfully. Lead ID: ${leadId}`
+  );
   return { leadId };
 }
 
 function shouldSaveLead(state: PipelineState): typeof END | 'saveLeadNode' {
   if (!state.aiEvaluation) return END;
   if (state.aiEvaluation.socialMediaGapScore < 8) return END;
-  if (!state.scrapedData?.whatsappNumber) return END;
+  if (!state.scrapedData?.whatsappNumber && !state.isSandbox) return END;
   return 'saveLeadNode';
 }
 
@@ -334,6 +431,11 @@ export async function runPipeline(
     // Pass the playbook to generatePitchNode
     (input as any).playbooks = playbooks;
 
+    console.log(`\n[Pipeline] Initiating pipeline for URL: ${input.url}`);
+    console.log(
+      `[Pipeline] Session ID: ${input.crawlSessionId}, Source: ${input.crawlSource}`
+    );
+
     const result = await graph.invoke({
       ...input,
       isDuplicate: false,
@@ -345,6 +447,9 @@ export async function runPipeline(
       error: null,
     });
 
+    console.log(
+      `[Pipeline] ✅ Pipeline execution finished for URL: ${input.url}. Lead ID: ${result.leadId ?? 'None'}`
+    );
     return result.leadId ?? null;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

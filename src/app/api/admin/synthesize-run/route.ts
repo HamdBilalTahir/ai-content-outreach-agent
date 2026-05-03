@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pipelineId, runId } = await req.json();
+    const { pipelineId, runId, candidates } = await req.json();
     if (!pipelineId || !runId) {
       return NextResponse.json(
         { error: 'pipelineId and runId are required' },
@@ -18,29 +18,41 @@ export async function POST(req: Request) {
       );
     }
 
-    // Query sandbox candidates for this run
-    let rId = runId;
-    if (runId.startsWith('sandbox:')) {
-      rId = runId.split(':')[2];
-    }
+    // Derive the run doc ID (strip the sandbox: prefix if present)
+    const rId = runId.startsWith('sandbox:') ? runId.split(':')[2] : runId;
+    const containerId = `sandbox_${pipelineId}_${rId}`;
+
     const snapshot = await db
-      .collection('pipelines')
-      .doc(pipelineId)
-      .collection('sandbox_runs')
-      .doc(rId)
-      .collection('sandbox_candidates')
+      .collection('leads')
+      .doc(containerId)
+      .collection('items')
       .where('userId', '==', userId)
       .get();
 
-    const leads = snapshot.docs.map(
-      (doc) => ({ id: doc.id, ...doc.data() }) as any
-    );
+    let leads = snapshot.docs.map((doc) => ({
+      id: `sandbox:${pipelineId}:${rId}:${doc.id}`,
+      ...doc.data(),
+    })) as any[];
+
+    // Merge in front-end overrides if provided
+    if (candidates && candidates.length > 0) {
+      const overridesMap = new Map(candidates.map((c: any) => [c.id, c]));
+      leads = leads.map((l) => {
+        if (overridesMap.has(l.id)) {
+          return { ...l, ...(overridesMap.get(l.id) as any) };
+        }
+        return l;
+      });
+    }
 
     const approvedLeads = leads.filter(
-      (l: any) => l.dispatchStatus === 'approved'
+      (l: any) =>
+        l.dispatchStatus === 'approved' || l.triageStatus === 'approved'
     );
     const rejectedLeads = leads.filter(
-      (l: any) => l.status === 'Failed' && l.sandboxRejected === true
+      (l: any) =>
+        (l.status === 'Failed' && l.sandboxRejected === true) ||
+        l.triageStatus === 'rejected'
     );
 
     const humanEditedMessages = leads
@@ -54,14 +66,13 @@ export async function POST(req: Request) {
         edited: l.generatedPitch,
       }));
 
-    // Run batch learner agent in the background or wait. We will wait for simplicity, or background it.
-    // The requirement says "UI shows a loading state... completion... successfully updated." so we wait.
     await runBatchLearnerAgent(
       userId,
       pipelineId,
       approvedLeads,
       rejectedLeads,
-      humanEditedMessages
+      humanEditedMessages,
+      runId
     );
 
     return NextResponse.json({ success: true });

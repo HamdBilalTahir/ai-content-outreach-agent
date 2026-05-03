@@ -23,6 +23,7 @@ export async function createUnipileHostedAuthLink(
     headers: {
       'X-API-KEY': token,
       'Content-Type': 'application/json',
+
       Accept: 'application/json',
     },
     body: JSON.stringify({
@@ -137,19 +138,42 @@ export async function sendWhatsappMessage(
   to: string,
   message: string
 ): Promise<boolean> {
-  const baseUrl = process.env.UNIPILE_BASE_URL;
-  const token = process.env.UNIPILE_TOKEN;
+  const dsn = process.env.UNIPILE_DSN || process.env.UNIPILE_TOKEN;
+  let baseUrl = process.env.UNIPILE_BASE_URL;
+  let token = process.env.UNIPILE_TOKEN;
+
+  if (dsn && dsn.includes('api.unipile.com')) {
+    const parts = dsn.split(':');
+    baseUrl = parts.slice(0, -1).join(':');
+    token = parts[parts.length - 1];
+  } else if (!baseUrl && dsn) {
+    // fallback if using token format
+    token = dsn;
+  }
 
   if (!baseUrl || !token) {
     throw new Error('Unipile configuration is missing');
   }
 
-  const maskedTo = to.length > 4 ? `****${to.slice(-4)}` : '****';
-
   const apiUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
 
+  // Make sure to format to strictly to E.164 if possible. We assume it's done before calling this, but we can do a basic check here:
+  const formattedTo = to.startsWith('+') ? to : `+${to.replace(/\D/g, '')}`;
+
   try {
-    const response = await fetch(`${apiUrl}/api/v1/messages`, {
+    const cleanApiUrl = apiUrl.replace(/\/api$/, '');
+    // Usually Unipile hosted instance API endpoint for chats creation is `/api/v1/chats`
+    // where you pass attendees_ids and text.
+    // Wait, the API error from earlier for /api/v1/chats was 422:
+    // "One or more request parameters are invalid or missing.\\n{\"type\":45,\"schema\":...\"path\":\"/attendees_ids\",\"message\":\"Required property\"}"
+    // This implies /api/v1/chats EXISTS and just wants the correct payload.
+    // The previous attempt failed because I sent `message: { text: message }` but maybe it expects `text` directly on the root?
+    // Let's use `/api/v1/chats` and send `account_id`, `attendees_ids`, and `text` (based on Unipile API docs).
+
+    const directMessagesEndpoint = `${cleanApiUrl}/api/v1/chats`;
+    const attendeeId = `${formattedTo.replace('+', '')}@s.whatsapp.net`;
+
+    const response = await fetch(directMessagesEndpoint, {
       method: 'POST',
       headers: {
         'X-API-KEY': token,
@@ -158,24 +182,41 @@ export async function sendWhatsappMessage(
       },
       body: JSON.stringify({
         account_id: accountId,
-        to: to,
+        attendees_ids: [attendeeId],
         text: message,
       }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorData = await response.json().catch(() => ({}));
       console.error(
-        `Failed to send WhatsApp message to ${maskedTo}:`,
-        errorText
+        `❌ [Unipile] Failed to send WhatsApp message to ${formattedTo}:`,
+        JSON.stringify(errorData)
       );
+
+      // If error indicates number is not on whatsapp
+      if (
+        errorData.message?.includes('not found') ||
+        errorData.error === 'Not Found'
+      ) {
+        throw new Error('Number not on WhatsApp');
+      }
       return false;
     }
 
-    console.log(`Successfully sent WhatsApp message to ${maskedTo}`);
+    const data = await response.json();
+    console.log(
+      `✅ [Unipile] WhatsApp message sent successfully to ${formattedTo} via Unipile! Message ID: ${data.message_id || data.id}`
+    );
     return true;
-  } catch (error) {
-    console.error(`Error sending WhatsApp message to ${maskedTo}:`, error);
+  } catch (error: any) {
+    console.error(
+      `❌ [Unipile] Error sending WhatsApp message to ${formattedTo}:`,
+      error.message || error
+    );
+    if (error.message === 'Number not on WhatsApp') {
+      throw error;
+    }
     return false;
   }
 }

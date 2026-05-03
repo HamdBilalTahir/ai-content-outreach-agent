@@ -10,7 +10,7 @@ Built on **Next.js 16 (App Router)** and **Firebase**, orchestrated via **LangGr
 - **Intelligent Prospecting Pipeline**:
   - Scrapes target websites via Firecrawl JS.
   - Audits brand Instagram profiles via Apify.
-  - Evaluates brand visual content poverty using Gemini (`gemini-3.1-flash-live-preview`).
+  - Evaluates brand visual content poverty using Gemini (`gemini-3.1-pro-preview`).
 - **Autonomous Playbooks (Simple RAG)**: The AI agents (Strategist, Scraper, Auditor, Copywriter) consult raw Markdown Playbooks stored in Vercel Blob before taking action.
 - **Sandbox Training Environment**: Test pipelines safely inside a manual diagnostic UI. Human interactions (like explicitly rejecting targets or modifying drafted text) are stored in an isolated Quarantine Zone. At the end of the run, a Learner Agent synthesizes these implicit human signals and physically rewrites the Markdown Playbooks, enabling organic AI adaptation without manual tuning.
 - **Continuous Feedback Loop**: Tracks real-world CRM outcomes (Closed, Rejected, Ghosted) to continuously hardcode Niche priority adjustments and build market-specific blacklists via the Data Scientist Feedback Loop agent.

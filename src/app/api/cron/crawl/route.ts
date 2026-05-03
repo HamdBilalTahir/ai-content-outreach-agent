@@ -69,8 +69,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       // Execute the pipeline for the specific user's active pipelines
       const { getAllNiches } = await import('../../../../../lib/db/niches');
       const niches = await getAllNiches(settings.userId);
-      const activeNiches = niches.filter((n) =>
-        activePipelineIds.includes(n.pipelineId)
+      const activeNiches = niches.filter(
+        (n) =>
+          activePipelineIds.includes(n.pipelineId) &&
+          (n.status ?? 'active') === 'active'
       );
       if (activeNiches.length === 0) continue;
 
@@ -79,24 +81,70 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       // We'll pass activeNiches to the strategy agent to only consider them
       // This requires modifying runCrawlStrategyAgent to accept an array of niche IDs to filter by, or we just rely on it picking.
       // For now, let's allow it to pick from active niches.
-      const strategy = await runCrawlStrategyAgent(settings.userId);
-      const { crawlSessionId, crawlTargets } = strategy;
 
-      // Only prospect targets that are part of active pipelines
-      const activeCrawlTargets = crawlTargets.filter((t) =>
-        nicheMap.has(t.nicheId)
-      );
-      if (activeCrawlTargets.length === 0) continue;
+      let strategyAttempts = 0;
+      const MAX_STRATEGY_ATTEMPTS = 2;
+      let allBrandUrls: { url: string; nicheId: string }[] = [];
+      let finalCrawlSessionId = '';
+      let systemWarning: string | undefined;
 
-      const prospectorResults = await runAutoProspector(
-        activeCrawlTargets,
-        crawlSessionId
-      );
-
-      let allBrandUrls: { url: string; nicheId: string }[] =
-        prospectorResults.flatMap((r) =>
-          r.brandUrls.map((url) => ({ url, nicheId: r.nicheId }))
+      while (strategyAttempts < MAX_STRATEGY_ATTEMPTS) {
+        strategyAttempts++;
+        console.log(
+          `[Cron Crawl] Invoking runCrawlStrategyAgent (Attempt ${strategyAttempts})...`
         );
+        const strategy = await runCrawlStrategyAgent(
+          settings.userId,
+          undefined,
+          false,
+          undefined,
+          undefined,
+          systemWarning
+        );
+        const { crawlSessionId, targetNiches } = strategy;
+        finalCrawlSessionId = crawlSessionId;
+
+        // Only prospect targets that are part of active pipelines
+        const activeCrawlTargets = targetNiches.filter((t) =>
+          nicheMap.has(t.nicheId)
+        );
+
+        if (activeCrawlTargets.length > 0) {
+          const prospectorResults = await runAutoProspector(
+            activeCrawlTargets,
+            crawlSessionId
+          );
+
+          allBrandUrls = prospectorResults.flatMap((r) =>
+            r.brandUrls.map((url) => ({ url, nicheId: r.nicheId }))
+          );
+        }
+
+        if (allBrandUrls.length > 0) {
+          break; // Found leads, exit retry loop
+        } else {
+          console.log(
+            `[Cron Crawl] 0 leads discovered on attempt ${strategyAttempts}.`
+          );
+          systemWarning = `SYSTEM WARNING: Both Tavily searches and Firecrawl maps resulted in 0 usable company domains. Generate entirely new search queries and map targets focusing on a different angle.`;
+          const { appendAgentLog } =
+            await import('../../../../../lib/db/crawlSessions');
+          await appendAgentLog(crawlSessionId, 'strategist', systemWarning);
+        }
+      }
+
+      if (allBrandUrls.length === 0) {
+        console.log(
+          `[Cron Crawl] 0 leads discovered after ${MAX_STRATEGY_ATTEMPTS} attempts. Skipping pipelines.`
+        );
+        await updateCrawlSession(finalCrawlSessionId, {
+          leadsCreated: 0,
+          leadsQualified: 0,
+          sessionStatus: 'Completed',
+        });
+        sessionIds.push(finalCrawlSessionId);
+        continue;
+      }
 
       // Enforce maxDailyCrawls guardrail
       const filteredBrandUrls = [];
@@ -129,7 +177,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
                 nicheMap.get(nicheId)?.pipelineId || 'default-pipeline',
               url,
               nicheId,
-              crawlSessionId,
+              crawlSessionId: finalCrawlSessionId,
               crawlSource: 'cron-crawl',
             })
       );
@@ -141,9 +189,29 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       const leadsQualified = pipelineResults.filter((id) => id !== null).length;
       totalLeadsQualified += leadsQualified;
-      sessionIds.push(crawlSessionId);
+      sessionIds.push(finalCrawlSessionId);
 
-      await updateCrawlSession(crawlSessionId, {
+      // Build per-niche stats and evaluate health
+      const nicheStats = new Map<
+        string,
+        { qualified: number; total: number }
+      >();
+      for (let i = 0; i < allBrandUrls.length; i++) {
+        const { nicheId } = allBrandUrls[i];
+        const stat = nicheStats.get(nicheId) ?? { qualified: 0, total: 0 };
+        stat.total++;
+        if (pipelineResults[i] !== null) stat.qualified++;
+        nicheStats.set(nicheId, stat);
+      }
+      const { evaluateNicheHealth } =
+        await import('../../../../../lib/agents/nicheHealthEvaluator');
+      await evaluateNicheHealth(
+        settings.userId,
+        finalCrawlSessionId,
+        nicheStats
+      );
+
+      await updateCrawlSession(finalCrawlSessionId, {
         leadsCreated: leadsDiscovered,
         leadsQualified,
         sessionStatus: 'Completed',

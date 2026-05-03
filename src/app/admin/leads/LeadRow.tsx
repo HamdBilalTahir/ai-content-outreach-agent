@@ -81,14 +81,23 @@ export default function LeadRow({
       <td className="px-4 py-3">
         <span
           className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-            lead.status === 'Qualified'
+            lead.status === 'Qualified' || lead.status === 'approved'
               ? 'bg-green-100 text-green-700'
               : lead.status === 'Pitched'
                 ? 'bg-purple-100 text-purple-700'
-                : 'bg-red-100 text-red-700'
+                : lead.status === 'Closed' || lead.status === 'Negotiating'
+                  ? 'bg-blue-100 text-blue-700'
+                  : lead.status === 'Ghosted' ||
+                      lead.status === 'incomplete' ||
+                      lead.status === ('pending_approval' as any)
+                    ? 'bg-yellow-100 text-yellow-700'
+                    : 'bg-red-100 text-red-700'
           }`}
         >
-          {lead.status}
+          {lead.status === ('pending_approval' as any) ||
+          lead.dispatchStatus === 'pending_approval'
+            ? 'pending_approval'
+            : lead.status}
         </span>
       </td>
       <td className="px-4 py-3 text-gray-500">

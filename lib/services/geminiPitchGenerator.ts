@@ -8,7 +8,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const llm = new ChatGoogleGenerativeAI({
-  model: 'gemini-3.1-flash-live-preview',
+  model: 'gemini-3.1-pro-preview',
   apiKey: process.env.GEMINI_API_KEY,
 });
 
@@ -70,7 +70,31 @@ export interface GeminiPitchInput {
   playbooks?: Record<string, string>;
 }
 
-function buildUserMessage(input: GeminiPitchInput): HumanMessage {
+async function fetchAndEncodeImage(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > 4 * 1024 * 1024) {
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const base64 = buffer.toString('base64');
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.warn(`[Gemini Image Fetch] Failed to fetch image ${url}:`, error);
+    return null;
+  }
+}
+
+function buildUserMessage(
+  input: GeminiPitchInput,
+  base64Images: string[]
+): HumanMessage {
   const igSummary = input.instagramData
     ? `Instagram: ${input.instagramData.postCount} recent posts, hasReels=${input.instagramData.hasReels}, avgLikes=${input.instagramData.avgEngagement}`
     : 'Instagram: no data available';
@@ -87,9 +111,9 @@ function buildUserMessage(input: GeminiPitchInput): HumanMessage {
     ...input.sanitizedImages,
   ].join('\n');
 
-  const imageBlocks = input.sanitizedImages.map((url) => ({
+  const imageBlocks = base64Images.map((dataUrl) => ({
     type: 'image_url' as const,
-    image_url: { url },
+    image_url: { url: dataUrl },
   }));
 
   return new HumanMessage({
@@ -100,6 +124,9 @@ function buildUserMessage(input: GeminiPitchInput): HumanMessage {
 export async function generatePitch(
   input: GeminiPitchInput
 ): Promise<PitchOutput | null> {
+  console.log(
+    `\n[Service: GeminiPitchGenerator] Starting pitch generation for ${input.brandName || 'Unknown Brand'}...`
+  );
   try {
     let dynamicPrompt = SYSTEM_PROMPT;
 
@@ -116,11 +143,30 @@ export async function generatePitch(
       }
     }
 
+    console.log(
+      `[Service: GeminiPitchGenerator] 📤 Handing over evidence to Gemini AI for the perfect pitch...`
+    );
+
+    // Fetch and encode top 3 images
+    const topImages = input.sanitizedImages.slice(0, 3);
+    const base64Images: string[] = [];
+    for (const url of topImages) {
+      const dataUrl = await fetchAndEncodeImage(url);
+      if (dataUrl) base64Images.push(dataUrl);
+    }
+
+    const payload = buildUserMessage(input, base64Images);
+    console.log(
+      `[Service: GeminiPitchGenerator] 📤 AI Prompt Payload:\n${JSON.stringify({ systemPrompt: dynamicPrompt, userMessage: payload }, null, 2)}`
+    );
     const result = await structuredLlm.invoke([
       new SystemMessage(dynamicPrompt),
-      buildUserMessage(input),
+      payload,
     ]);
 
+    console.log(
+      `[Service: GeminiPitchGenerator] 📥 AI delivered the pitch!\n${JSON.stringify(result, null, 2)}`
+    );
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

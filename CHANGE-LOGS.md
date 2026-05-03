@@ -2,7 +2,410 @@
 
 ---
 
+### 🐛 Fixes
+
+---
+
+> ### Unipile Dispatcher Migration & Strict Target Rules
+>
+> - **What changed:** Swapped the custom webhook out for Unipile's `/chats` API within `whatsappDispatcher`. Implemented `getPrimaryConnection` to accurately route outgoing messages from the user's active connection instance ID. Added E.164 phone number formatting with the strict Unipile `@s.whatsapp.net` suffix and explicit backend/frontend logging for message sending. Filtered dispatch leads more strictly to include `dispatchStatus === 'approved'` or purely `status === 'Qualified'` while explicitly screening out anything marked `'rejected'`. Added UNIPILE_DSN parsing support, and captured explicit 404 "Number not on WhatsApp" error throws for invalid leads.
+> - **Why:** The legacy webhook was failing on valid WhatsApp numbers due to missing variables and custom schema expectations, so standardizing around Unipile creates a reliable delivery layer. Calling `/chats` accurately opens new DMs. Lead filtering was leaky, potentially allowing rejected sandbox profiles to occasionally squeeze through cron batches. Explicit logs and "Number Invalid" categorizations provide better visibility into dispatch successes and errors.
+> - **Files:**
+>   - `lib/services/whatsappDispatcher.ts`
+>   - `lib/services/unipile.ts`
+
+---
+
 ### ✨ Features
+
+---
+
+> ### Leads Collection Restructure — Per-Run Sandbox Subcollections
+>
+> - **What changed:** Sandbox leads are now stored under `leads/sandbox_{pipelineId}_{runId}/items/{docId}` — one isolated subcollection per sandbox run. Automation/cron leads remain at `leads/{docId}`. Sandbox lead IDs are now encoded as `sandbox:{pipelineId}:{runId}:{docId}` (replaces the broken `sandbox_candidate:...` scheme). `getLeadDocRef` routes both formats to the correct Firestore path. `getSandboxLeadsByRun` added as a typed helper. The real-time subscription in `<ManualTriggers />` and the `synthesize-run` route were updated to the new paths.
+> - **Why:** All sandbox runs previously shared a single `leads/sandbox/leads` collection. Querying leads for a specific run required an extra `where('crawlSessionId')` filter, and deduplication bled across runs. The new structure makes each run's leads fully self-contained and removes the fragile composite-ID encoding.
+> - **Files:**
+>   - `lib/db/leads.ts`
+>   - `lib/types/index.ts`
+>   - `src/app/api/admin/synthesize-run/route.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+
+---
+
+> ### WhatsApp Dispatch Status Persisted to Lead Document
+>
+> - **What changed:** After each WhatsApp send attempt, the dispatcher now writes `lastMessageSent` (the exact pitch text), `lastMessageSentAt` (timestamp), and `dispatchSuccess` (bool) directly onto the lead document in a single atomic `updateLead` call — replacing the narrower `updateLeadStatus` call that only flipped the status field.
+> - **Why:** There was no way to see what message was actually sent to a lead or whether the dispatch succeeded without cross-referencing the separate `dispatchLogs` collection. All dispatch context is now on the lead doc itself.
+> - **Files:**
+>   - `lib/services/whatsappDispatcher.ts`
+>   - `lib/types/index.ts`
+
+---
+
+> ### Autonomous Niche Rotation & Self-Healing Protocol
+>
+> - **What changed:** After every crawl session (sandbox or cron), a new `NicheHealthEvaluator` agent calculates the success rate (qualified / total) for each niche. If a niche scores under 5% for 3 consecutive sessions, its status is automatically set to `cool-down` in Firestore with a human-readable reason. The agent then fires a **Lateral Pivot**: it uses Tavily to research an adjacent market, asks Gemini to invent a replacement niche, and inserts it as a new active niche with `replacedNicheId` / `replacedNicheName` set. All steps emit logs to the sandbox diagnostic terminal. Cool-down niches are excluded from the Crawl Strategy Agent's selection and the cron runner's active set. The Niche Intelligence page now shows a pipeline selector dropdown, per-niche health bars (green/yellow/red), last-crawled timestamps, a red "Cool-Down" badge + reason row, and an amber "Auto-Added" badge for AI-generated replacements.
+> - **Why:** Previously, a failing niche would silently waste API budget across every run with no corrective action. The system now detects exhausted markets autonomously, pauses them, and self-heals by sourcing a replacement without any Overseer intervention.
+> - **Files:**
+>   - `lib/agents/nicheHealthEvaluator.ts` _(new)_
+>   - `lib/types/index.ts`
+>   - `lib/db/niches.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/api/cron/crawl/route.ts`
+>   - `src/app/admin/niches/NichesManager.tsx`
+>   - `src/app/admin/niches/page.tsx`
+
+---
+
+> ### Sandbox Rejected Leads Tab & Advanced Triage Selection
+>
+> - **What changed:** Added a "Rejected" tab to the Sandbox Review Tray in `<ManualTriggers />` to separately house leads that the human Overseer has manually rejected. Implemented "Select All/Deselect All" logic bound per tab, and re-wired the "Finalize Session" endpoint to _only_ dispatch those explicitly selected leads.
+> - **Why:** Cleans up the main review tray by removing grayed-out rejected leads from the main list, and provides precise bulk-dispatch capabilities for approved leads while retaining the rejected ones for Learner Agent synthesis.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/finalize-sandbox/route.ts`
+
+---
+
+> ### Lead Inspector Context Data Binding & Analyst Narrative Persistence
+>
+> - **What changed:** Added the `analystNarrative` property directly to the `Lead` schema and successfully mapped it through the LangGraph pipeline's `saveLeadNode` to persist to Firestore. In the `<LeadInspectorModal />`, swapped out the rigid placeholder for a dynamic "Lead Context" block that displays the target's niche mapping, organic discovery source, and explicitly states how/why the AI determined their visual poverty gap score.
+> - **Why:** Prevents AI context loss by ensuring the Gemini Analyst's exact reasoning survives the graph orchestrator to reach the database, ultimately allowing human operators to instantly audit _why_ the AI believes this prospect is a perfect fit.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `lib/pipeline/runPipeline.ts`
+>   - `src/app/admin/sessions/LeadInspectorModal.tsx`
+
+---
+
+> ### LearnerAgent live terminal logging on lead rejection
+>
+> - **What changed:** `runLearnerAgent` now accepts a `sessionId` and emits step-by-step layman-friendly logs to the Sandbox diagnostic terminal at every stage — feedback received, agents identified, playbook rewrite in progress, and completion. The triage-lead route now fires the learner agent as a background task on every rejection.
+> - **Why:** Previously only one log line appeared when a lead was rejected; the full LLM synthesis was happening silently. Users now see the AI learning process in real time.
+> - **Files:**
+>   - `lib/agents/learnerAgent.ts`
+>   - `src/app/api/admin/triage-lead/route.ts`
+
+---
+
+> ### Playbook last change note
+>
+> - **What changed:** `updateIntelligenceRegistry` now accepts and stores a `lastChangeNote` (first line of Gemini's dissection reasoning, capped at 200 chars) and `createdAt` on new documents.
+> - **Why:** The Active Playbooks UI was showing "Auto-updated from latest synthesis run" for every agent — the actual reason for the update is now stored and displayed instead.
+> - **Files:**
+>   - `lib/db/intelligence.ts`
+
+---
+
+> ### Live Sandbox Triage Logging
+>
+> - **What changed:** Added a `/api/admin/triage-lead` endpoint and hooked it up to the Sandbox Inspector. When a user approves or rejects a lead, the system now logs this action to both the backend terminal and the Sandbox diagnostic UI terminal in real-time.
+> - **Why:** Provides immediate visual feedback to the user that their triage decision was registered by the system prior to finalization, fulfilling the expectation of live tracking.
+> - **Files:**
+>   - `src/app/api/admin/triage-lead/route.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+
+---
+
+> ### Article & News URL Filtering in Prospector
+>
+> - **What changed:** Expanded `LISTICLE_REGEX` in `autoprospector.ts` to also catch `/news/`, `/articles/`, `/press/`, `/press-release/`, and `/pr/` paths. URLs matching these patterns are now routed through the Listicle Extractor (Firecrawl + Gemini) rather than being treated as brand leads.
+> - **Why:** News article URLs (e.g. wardsauto.com/news/...) were slipping through as leads, resulting in media outlets appearing in the audit queue.
+> - **Files:**
+>   - `lib/services/autoprospector.ts`
+
+---
+
+> ### Phone Number Country Code Normalization
+>
+> - **What changed:** Fixed `normalizePhone` in `websiteScraper.ts` (was logically broken — stripped `+` before checking for it). Fixed the `tel:` path to use `libphonenumber-js` with a TLD-derived country heuristic before falling back to raw digit normalization, ensuring local-format numbers get the correct international prefix. The LLM extraction layer already instructs Gemini to prepend the country code from address context.
+> - **Why:** Phone numbers in lead details were being stored without a `+` country code prefix, making them unusable for WhatsApp dispatch.
+> - **Files:**
+>   - `lib/services/websiteScraper.ts`
+
+---
+
+> ### The "Publisher vs. Business" Gate & Listicle Extractor
+>
+> - **What changed:** Inserted a Regex routing node in `autoprospector.ts` immediately after Tavily URL extraction. If a URL is identified as a listicle or magazine (via `/blog/`, `/story/`, `/article/`, `/features/`, `/list/`), the system uses Firecrawl and Gemini to read the Markdown, extract all actual brand websites mentioned within, and inject them back into the main pipeline queue while discarding the original magazine URL.
+> - **Why:** Prevents the pipeline from mistakenly targeting media outlets while actively harvesting highly valuable grouped brand targets found inside "Top 10" style listicles.
+> - **Files:**
+>   - `lib/services/autoprospector.ts`
+
+---
+
+> ### Sandbox Finalization & Intelligence Synthesis
+>
+> - **What changed:** Built an unstoppable batch operation endpoint (`/api/admin/finalize-sandbox`) that replaces the old dispatch flow. When finalized, the system now dispatches all explicitly approved leads via WhatsApp, promotes them from the Sandbox to the main CRM, and forces the AI Learner Agent to analyze human rejections to update Vercel Blob Strategy Playbooks, before formally closing the session.
+> - **Why:** Transitions the Sandbox from a simple testing ground into a closed-loop intelligence machine where human triage directly and autonomously rewrites future AI behavior.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/finalize-sandbox/route.ts`
+
+---
+
+> ### "Inspect Draft" Modal & Soft Triage UI
+>
+> - **What changed:** Replaced the direct Firestore mutations on the Sandbox Tray with local React state management via a new `<LeadInspectorModal />`. Users can now edit contact info, manually rewrite pitches, or prompt Gemini to regenerate them on the fly. Actions like "Approve" and "Reject" are now "Soft Decisions" that visually alter the UI (Green/Red badges) with full undo capabilities until the session is finalized.
+> - **Why:** Provides a safe, forgiving interface for the Overseer to manually adjust AI outputs and triage leads without risking accidental, permanent database changes.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/admin/sessions/LeadInspectorModal.tsx`
+>   - `src/app/api/admin/regenerate-pitch/route.ts`
+
+---
+
+> ### Explicit Lead Rejection Reasoning for AI Training
+>
+> - **What changed:** Added an optional "Reason for Rejection" text input to the `<LeadInspectorModal />` which captures the user's rationale when discarding a sandbox candidate. Updated the `/api/admin/finalize-sandbox` endpoint to persist this `sandboxRejectionReason` to the database, and modified the `runBatchLearnerAgent` prompt to directly inject these human-provided reasons into the Sandbox batch synthesis process.
+> - **Why:** Allows the Overseer to explicitly tell the AI _why_ a lead was bad (e.g., "Not a relevant business"), ensuring the Learner Agent updates the Strategist Playbook with precise negative constraints rather than blindly guessing why a lead failed.
+> - **Files:**
+>   - `src/app/admin/sessions/LeadInspectorModal.tsx`
+>   - `src/app/api/admin/finalize-sandbox/route.ts`
+>   - `lib/types/index.ts`
+>   - `lib/agents/learnerAgent.ts`
+
+---
+
+> ### Full-Pipeline LLM Intelligence Routing & Layman Terminal Logs
+>
+> - **What changed:** Completely restructured the `LearnerAgent` to use a sophisticated two-node architecture (Rejection Understanding Node -> Update Intelligence Node) for both Sandbox batch learning and continuous Outcome feedback. The initial LLM pass dynamically dissects the human's explicit feedback, figures out the expanded reasoning, and routes the new constraints only to the specific agent(s) responsible for the failure (Strategist, Scraper, Auditor, Analyst, or Copywriter). Live, layman-friendly terminal logs were also added to the Sandbox Diagnostics UI so the Overseer can watch the agents dissect feedback and update their Vercel Blob Playbooks in real-time.
+> - **Why:** Transitions the intelligence layer from a rigid, hardcoded update structure into a surgical, self-routing learning mechanism. This ensures that one piece of feedback can dynamically teach multiple different AI personas simultaneously, while explicitly building trust with the Overseer by making the entire reasoning and update process visible.
+> - **Files:**
+>   - `lib/agents/learnerAgent.ts`
+>   - `src/app/api/admin/finalize-sandbox/route.ts`
+
+---
+
+> ### Aggressive Phone Number Extraction Engine
+>
+> - **What changed:** Integrated `libphonenumber-js` to scan raw Markdown and deployed a Multi-Page Fallback Logic inside the Scraper. If no phone number is found on the homepage, the scraper actively hunts for URLs containing `/contact`, `/about`, or `/reach-us`, fires a secondary Firecrawl request, and extracts numbers from those nested pages.
+> - **Why:** Significantly increases the pipeline's conversion rate by successfully discovering contact data for targets that bury their phone numbers away from the main landing page.
+> - **Files:**
+>   - `lib/services/websiteScraper.ts`
+
+---
+
+### 💅 Styling and UI Improvements
+
+---
+
+> ### Inline Playbook Viewer
+>
+> - **What changed:** Updated the "Active Playbooks" modal to render markdown documents inline with a back button, instead of defaulting to downloading the document. Display the Playbook's `lastUpdated` and `lastChangeNote` as UI metadata elements below the text preview.
+> - **Why:** Eliminates friction when reviewing the AI's internal logic, allowing the Overseer to read updated playbooks directly in the dashboard and track the AI's synthesis history natively.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+
+---
+
+> ### Disqualification Transparency & "Incomplete" UI State
+>
+> - **What changed:** Altered the pipeline to push narrative terminal logs when leads are discarded (e.g., missing phone numbers). Bypassed the drop rule specifically for Sandbox runs, allowing highly qualified leads with missing contact info to persist into the `sandbox_candidates` subcollection under an `incomplete` status. Rendered these leads in the UI with a yellow "Missing Contact Info" warning and added mutation support to manually fill the gap.
+> - **Why:** Eliminates the UX disconnect where users see zero results without knowing why, and allows the Overseer to manually salvage highly-scored leads that just need a quick Google search for a phone number.
+> - **Files:**
+>   - `lib/pipeline/runPipeline.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/admin/sessions/LeadInspectorModal.tsx`
+
+---
+
+### ⚡ Performance
+
+---
+
+> ### Pipeline "Fail Fast" Reordering
+>
+> - **What changed:** Injected a conditional routing edge into the LangGraph pipeline immediately after the `scrapeWebsiteNode`. If no phone number is extracted, the pipeline now aborts analysis and bypasses the expensive Auditor and Pitch Generation steps (unless running in Sandbox mode).
+> - **Why:** Saves substantial LLM compute costs and processing time by immediately dropping useless targets before invoking paid APIs.
+> - **Files:**
+>   - `lib/pipeline/runPipeline.ts`
+
+---
+
+### 🐛 Fixes
+
+---
+
+> ### Phone Number Processing Fallback & Normalization Fix
+>
+> - **What changed:** Modified the `websiteScraper` to fall back to passing the raw matched string (like `telMatch[1]` or the raw LLM output) to the next pipeline stage if `libphonenumber-js` fails to parse a valid E.164 number. Also updated the deduplication logic in `runPipeline` to use `replace(/[^\d+]/g, '')` instead of `replace(/\D/g, '')`, ensuring that correctly formatted numbers with a leading `+` aren't mangled by the global duplicate scanner.
+> - **Why:** The pipeline was losing partially formed or non-standard phone numbers during the analysis step, rendering the `whatsappNumber` field completely empty in the UI. Additionally, the deduplicator was improperly stripping the `+` sign from numbers, causing downstream validation or formatting errors.
+> - **Files:**
+>   - `lib/services/websiteScraper.ts`
+>   - `lib/pipeline/runPipeline.ts`
+
+---
+
+> ### Proper Niche Name Display in Lead Inspector
+>
+> - **What changed:** Passed the `pipelines` array down to `LeadInspectorModal` and added a dynamic Firestore `getDoc` fallback to fetch the `nicheName` if the ID is missing from the static props.
+> - **Why:** When the Sandbox agent autonomously creates a new niche during a live session, the client-side `ManualTriggers` component (and thus the Inspector Modal) had stale props and was displaying the raw niche ID instead of the human-readable name. The dynamic lookup ensures newly created niches render correctly.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/admin/sessions/LeadInspectorModal.tsx`
+
+---
+
+> ### Backward-Compatible Sandbox Lead Routing
+>
+> - **What changed:** Added backward-compatible routing in `getLeadDocRef` to correctly map legacy `sandbox:{docId}` and `sandbox_candidate:{docId}` ID formats to their old Firestore paths (`leads/sandbox/leads/{docId}`). Added a fallback mechanism in `getLeadById`, `updateLeadStatus`, and `updateLead` to automatically retry fetching the document from the old path if it isn't found at the new location.
+> - **Why:** The recent subcollection refactor broke routing for older sandbox leads, causing updates and reads to fail with "Not found or unauthorized" errors because the system was looking in the new paths for old data.
+> - **Files:**
+>   - `lib/db/leads.ts`
+
+---
+
+> ### Apify Actor Upgrade & Precision IG Extraction
+>
+> - **What changed:** Upgraded the `apify-client` payload to use `directUrls` and set `resultsType: 'posts'` to fix silent failures. Revamped Instagram link extraction to heuristically filter out generic pages (`/p/`, `/explore/`, `?share=`), applying fuzzy string similarity against the brand/domain to identify the true corporate profile. Added a Gemini LLM fallback if fuzzy matching scores are too low.
+> - **Why:** Prevents the Auditor from crashing or analyzing the wrong profiles (e.g., journalists instead of the brand), ensuring the AI evaluates the actual target's visual poverty.
+> - **Files:**
+>   - `lib/services/instagramAuditor.ts`
+>   - `lib/services/websiteScraper.ts`
+
+---
+
+> ### Vision API Base64 Image Pre-Processing (The Gemini Fix)
+>
+> - **What changed:** Created `fetchAndEncodeImage` to autonomously download sanitized remote images (skipping heavy files > 4MB), encode them as base64 data URLs, and map them properly into the `HumanMessage` payload. Wrapped the fetch in a try/catch to absorb 403 Forbidden errors.
+> - **Why:** Patches a major leak where Gemini Vision would outright crash the pitch generation pipeline because it couldn't reliably fetch remote URLs itself.
+> - **Files:**
+>   - `lib/services/geminiPitchGenerator.ts`
+
+---
+
+### 💅 Styling and UI Improvements
+
+---
+
+> ### Sandbox Terminal Status and Logging Polish
+>
+> - **What changed:** Removed unnecessary window control icons from the terminal header. Added dynamic color-coded background badges for the sandbox status indicator (Green for success, Red for failure). Modified the crawl orchestrator to append explicit final logs upon completion or failure, and updated the terminal UI to visually distinguish system errors with a ❌ icon and red text.
+> - **Why:** Makes the live status of the sandbox run instantly obvious to the user and provides a clear, distinct visual cue when errors occur during the pipeline execution.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/run-crawl/route.ts`
+
+---
+
+### ✨ Features
+
+---
+
+> ### Multi-Niche Array Processing & Schema Update
+>
+> - **What changed:** Updated the Strategist JSON output schema to return `targetNiches` as a strict array, instructing the LLM to select 2-3 high-confidence niches per run. The Prospector pipeline now iterates over all selected niches, updating/creating them concurrently in Firestore, and mapped discoveries are automatically tagged with their respective `niche_id`.
+> - **Why:** Prevents the silent loss of valuable AI research when multiple viable niches are found, heavily boosting the discovery throughput per run and ensuring diverse CRM populating.
+> - **Files:**
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `lib/services/autoprospector.ts`
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/api/cron/crawl/route.ts`
+
+---
+
+> ### Hybrid Lead Discovery Engine (Tavily + Firecrawl Map)
+>
+> - **What changed:** Replaced the pure Firecrawl Map discovery engine with a hybrid system that runs Tavily semantic searches and Firecrawl mapping in parallel. The Prospector now merges and deduplicates results from both sources. If a mapped directory profile is found, the new DirectoryResolver uses an LLM to "click in" and extract the external brand link automatically. If 0 leads are found after resolution, the orchestrator triggers an immediate Self-Correction Loop for the Strategist to try new queries (up to 2 times).
+> - **Why:** Maximizes lead volume by leveraging both open-web search intelligence and deep aggregator directory structures, while automatically filtering out generic junk domains and gracefully failing back to the Strategist when discovery queries are too broad.
+> - **Files:**
+>   - `lib/services/autoprospector.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/api/cron/crawl/route.ts`
+
+---
+
+> ### Data-Driven Niche Ideation (The Strategist's Research Phase)
+>
+> - **What changed:** Upgraded the Strategist Agent to perform a live web search via Tavily using the pipeline goal and best client seed URLs. The agent now evaluates market trends, synthesizes potential niches, and assigns a Confidence Score with a detailed Market Hypothesis. The UI now supports adding "Look-alike" client URLs during Sandbox init and displays the resulting hypothesis, score, and research citations in the Niches Manager.
+> - **Why:** Transitions the AI from randomly guessing niches to backing its strategic choices with hard search data and explicitly logging its reasoning for human oversight.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/init-pipeline/route.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+>   - `src/app/admin/niches/NichesManager.tsx`
+
+---
+
+### 🐛 Fixes
+
+---
+
+> ### LearnerAgent Playbook Updates & Triage Logging
+>
+> - **What changed:** Fixed multiple critical bugs blocking the LearnerAgent from updating playbooks and rendering logs. In `/api/admin/synthesize-run`, explicitly passed `runId` down to the `runBatchLearnerAgent` so terminal logs can stream, and updated the endpoint to merge frontend manual triage overrides (`candidates`) so the agent actually receives the rejected leads. In `/api/admin/feedback`, fixed hardcoded `'default-pipeline'` string to correctly use `lead.pipelineId`, ensuring continuous learning updates the correct pipeline's Playbooks and timestamp.
+> - **Why:** Ensures that the newly built LLM Intelligence Routing and Dynamic Dissection logic actually receives the feedback data, processes it, and successfully updates the active pipeline's playbooks with visible logs and accurate timestamps.
+> - **Files:**
+>   - `src/app/api/admin/synthesize-run/route.ts`
+>   - `src/app/api/admin/feedback/route.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+
+---
+
+> ### Gracefully handle expired Firebase ID tokens
+>
+> - **What changed:** Updated the `getAuthenticatedUserId` utility to silently catch and return null for `auth/id-token-expired` errors instead of logging them to `console.error`.
+> - **Why:** Prevents Next.js 500 error overlays and noisy terminal logs when a user's session expires, allowing the app to smoothly redirect them to the login page.
+> - **Files:**
+>   - `lib/utils/auth.ts`
+
+---
+
+> ### Prevent empty pipelines execution
+>
+> - **What changed:** Added guard clauses to `run-crawl` and `cron/crawl` routes to skip pipeline execution when `leadsDiscovered === 0`. Appends an agent log asking the strategist to adjust targets. Also prevents pipeline execution completely when in Sandbox mode.
+> - **Why:** Eliminates console spam ("Executing 0 pipelines") and prevents empty operations on both manual runs and background cron crawls while explicitly feeding 0-lead failure context back into the AI logs.
+> - **Files:**
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/api/cron/crawl/route.ts`
+
+---
+
+### ✨ Features
+
+---
+
+> ### Sandbox Resume Runs & Checkpointing
+>
+> - **What changed:** Implemented checkpointing for sandbox sessions by tracking `processedBrands` in the database. Added a "Resume Failed Run" option in the UI that appears when a selected pipeline's latest run is stalled, calling the backend with a `resumeSessionId` parameter to skip already-processed URLs.
+> - **Why:** Prevents data waste and API cost leakage when third-party services fail mid-run, allowing users to pick up exactly where they left off.
+> - **Files:**
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `lib/db/crawlSessions.ts`
+>   - `lib/types/index.ts`
+
+---
+
+> ### API Resiliency & Graceful Degradation
+>
+> - **What changed:** Built indefinite retry loops with intelligent backoffs around Firecrawl's scraping and mapping functions to gracefully handle `429 Rate limit exceeded` errors without crashing the crawler.
+> - **Why:** Creates a resilient extraction pipeline that doesn't immediately fail when external vendors throttle requests, guaranteeing smoother operations.
+> - **Files:**
+>   - `lib/services/autoprospector.ts`
+>   - `lib/services/websiteScraper.ts`
+
+---
+
+> ### Robust Crawl Strategy Generation
+>
+> - **What changed:** Upgraded the `crawlStrategyAgent` to utilize `@langchain/google-genai` with `withStructuredOutput()`. Ensures all AI-suggested niches are captured by parsing them via `.join(', ')` rather than incorrectly discarding all but the first array element.
+> - **Why:** Prevents the silent loss of multiple niche targets due to strict array bounds, and fortifies the JSON output against schema drift.
+> - **Files:**
+>   - `lib/agents/crawlStrategyAgent.ts`
+
+---
+
+> ### Live Agent Diagnostics Loader
+>
+> - **What changed:** Introduced a smooth "Agent is thinking..." pulsing status loader at the tail-end of the Sandbox diagnostics terminal while the orchestrator is in a Running state. Altered scroll tracking to intelligently suspend auto-scroll when the user scrolls up.
+> - **Why:** Enhances the real-time observer experience so users aren't left wondering if the process froze during long LLM evaluations, and doesn't forcefully yank them down while reading older logs.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
 
 ---
 
@@ -100,6 +503,29 @@
 >   - `lib/types/index.ts`
 >   - `lib/agents/crawlStrategyAgent.ts`
 >   - `lib/agents/feedbackLoopAgent.ts`
+
+---
+
+> ### The "Self-Crawl" Genesis Prompt & Strategy Review Gate
+>
+> - **What changed:** Built a multi-step Sandbox initialization flow. Users input seed links and a rough goal, which triggers a background Firecrawl and Gemini synthesis to output a polished "Detailed Goal" and "Concept Strategy". Users review and approve this generated strategy in the UI. Upon approval, the `/api/admin/init-pipeline` endpoint natively bootstraps all underlying Agent Playbooks (Strategist, Scraper, Auditor, Analyst, Copywriter) via LLM generation and saves them to Vercel Blob before seamlessly routing the user into the live Sandbox loop.
+> - **Why:** Solves the "garbage in, garbage out" problem by having the AI act as its own prompt engineer, deeply contextualizing the user's business before creating the pipeline instructions.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/generate-strategy-preview/route.ts`
+>   - `src/app/api/admin/init-pipeline/route.ts`
+>   - `src/app/admin/pipelines/PipelinesManager.tsx`
+
+---
+
+> ### Sandbox UI Upgrades & Multimodal Strategy Generation
+>
+> - **What changed:** Beautified the Sandbox initialization modal with a sleek, drag-and-drop image upload interface using Tailwind CSS. Shifted the `/api/admin/generate-strategy-preview` endpoint to use `@langchain/google-genai` for full multimodal support, allowing users to upload up to 10 images alongside their rough goal. Added dropdown functionality to switch between attached pipelines seamlessly within the Sandbox terminal, and implemented graceful LLM degradation if the primary URL scrape fails on protected domains (like Instagram).
+> - **Why:** Drastically improves the Overseer's experience by offering intuitive image context uploading, empowering the Gemini model to analyze visual assets natively during strategy generation, and resolving critical UI nesting bugs.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/admin/sessions/page.tsx`
+>   - `src/app/api/admin/generate-strategy-preview/route.ts`
 
 ---
 
@@ -235,6 +661,15 @@
 ---
 
 ### ✨ Features
+
+---
+
+> ### The "Listicle & Article Extractor" Node
+>
+> - **What changed:** Upgraded the pipeline's routing logic to detect "Top 10" blog posts and magazine articles (via `/blog/`, `/article/`, `/guides/`, `/features/`, `/top-` patterns in the URL). When identified, the new `ListicleExtractorNode` uses Firecrawl to download the article's Markdown and Gemini to extract the names and direct outbound website links of every independent brand mentioned. These extracted URLs are then re-injected into the main scraper queue.
+> - **Why:** The previous `DirectoryResolver` expected a single "Visit Website" button and failed on long-form articles. This upgrade allows the system to harvest multiple new targets from a single listicle (e.g., extracting 10 brands from one Vogue article), significantly expanding the discovery yield and dynamically feeding the prospector.
+> - **Files:**
+>   - `lib/services/autoprospector.ts`
 
 ---
 

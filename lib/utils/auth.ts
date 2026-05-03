@@ -12,7 +12,10 @@ export async function getAuthenticatedUserId(): Promise<string | null> {
 
     const decodedToken = await adminAuth.verifyIdToken(token);
     return decodedToken.uid;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'auth/id-token-expired') {
+      return null;
+    }
     console.error('Error verifying auth token:', error);
     return null;
   }

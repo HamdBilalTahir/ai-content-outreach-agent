@@ -1,5 +1,5 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { getLeadsByStatus, updateLeadStatus } from '../db/leads';
+import { getLeadsByStatus, updateLead } from '../db/leads';
 import { createDispatchLog } from '../db/dispatchLogs';
 
 function maskNumber(number: string): string {
@@ -11,44 +11,37 @@ function randomDelay(minMs: number, maxMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+import {
+  sendWhatsappMessage as unipileSendMessage,
+  getConnectedAccounts,
+} from './unipile';
+
+import { getPrimaryConnection } from '../db/connections';
+
 export async function sendWhatsappMessage(
+  userId: string,
   whatsappNumber: string,
   message: string
 ): Promise<boolean> {
-  const WEBHOOK_URL = process.env.WHATSAPP_WEBHOOK_URL;
-  const WEBHOOK_SECRET = process.env.WHATSAPP_WEBHOOK_SECRET;
-
-  if (!WEBHOOK_URL || !WEBHOOK_SECRET) {
-    console.error('Missing WHATSAPP_WEBHOOK_URL or WHATSAPP_WEBHOOK_SECRET');
-    return false;
-  }
-
-  try {
-    const response = await fetch(WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${WEBHOOK_SECRET}`,
-      },
-      body: JSON.stringify({ to: whatsappNumber, message }),
-    });
-
-    if (response.ok) {
-      console.log(`WhatsApp sent to ${maskNumber(whatsappNumber)}`);
-      return true;
-    }
-
+  const primaryConnection = await getPrimaryConnection(userId);
+  if (!primaryConnection || !primaryConnection.instanceId) {
     console.error(
-      `WhatsApp send failed for ${maskNumber(whatsappNumber)}: HTTP ${response.status}`
-    );
-    return false;
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error(
-      `WhatsApp send error for ${maskNumber(whatsappNumber)}: ${detail}`
+      `[WhatsApp Dispatcher] No primary connection found for user ${userId}`
     );
     return false;
   }
+
+  console.log(
+    `[WhatsApp Dispatcher] Sending message to ${maskNumber(whatsappNumber)} via account ${primaryConnection.instanceId}`
+  );
+
+  // Note: we let this throw directly back up to dispatchBatch so we can properly capture
+  // explicit Number Not on WhatsApp errors and mark the lead as invalid.
+  return await unipileSendMessage(
+    primaryConnection.instanceId,
+    whatsappNumber,
+    message
+  );
 }
 
 import type { SystemSettings } from '../types';
@@ -73,25 +66,34 @@ export async function dispatchBatch(
   const niches = await getAllNiches(settings.userId);
   const nicheMap = new Map(niches.map((n) => [n.id, n]));
 
-  let leads = await getLeadsByStatus(
-    settings.userId,
-    'Qualified',
-    settings.dispatchBatchSize * 2 // Fetch more to allow filtering
+  let leads: any[] = [];
+
+  if (leadIds && leadIds.length > 0) {
+    // If specific leads are provided, fetch them directly
+    const { getLeadById } = await import('../db/leads');
+    for (const id of leadIds) {
+      const l = await getLeadById(settings.userId, id);
+      if (l) leads.push(l);
+    }
+  } else {
+    // Standard cron batch pull
+    leads = await getLeadsByStatus(
+      settings.userId,
+      'Qualified',
+      settings.dispatchBatchSize * 2 // Fetch more to allow filtering
+    );
+  }
+
+  // Let's just filter leads we fetched to exclude rejected ones
+  // We'll also only include those explicitly approved or standard 'Qualified'
+  leads = leads.filter(
+    (l) =>
+      (l.dispatchStatus as any) !== 'rejected' &&
+      (l.dispatchStatus === 'approved' || l.status === 'Qualified')
   );
 
   if (activePipelineIds && activePipelineIds.length > 0) {
     leads = leads.filter((l) => activePipelineIds.includes(l.pipelineId));
-  }
-
-  if (leadIds && leadIds.length > 0) {
-    // If specific leads are provided, filter the current leads or fetch them directly
-    const { getLeadById } = await import('../db/leads');
-    const specificLeads = [];
-    for (const id of leadIds) {
-      const l = await getLeadById(settings.userId, id);
-      if (l && l.status === 'Qualified') specificLeads.push(l);
-    }
-    leads = specificLeads;
   }
 
   // Filter leads based on guardrails
@@ -137,10 +139,31 @@ export async function dispatchBatch(
       continue;
     }
 
-    const success = await sendWhatsappMessage(
-      lead.whatsappNumber,
-      lead.generatedPitch
-    );
+    let success = false;
+    let errorMessage: string | null = null;
+    let finalStatus: any = 'Failed';
+
+    try {
+      success = await sendWhatsappMessage(
+        settings.userId,
+        lead.whatsappNumber,
+        lead.generatedPitch
+      );
+      if (success) {
+        finalStatus = 'Pitched';
+      } else {
+        errorMessage = 'Send failed — see logs';
+      }
+    } catch (err: any) {
+      success = false;
+      errorMessage = err.message || 'Send failed';
+      if (errorMessage === 'Number not on WhatsApp') {
+        finalStatus = 'Number Invalid';
+      }
+    }
+
+    // We actually handled the error logging in sendWhatsappMessage, but if it threw up to here we handle it.
+    // Notice that sendWhatsappMessage catches and returns false if it's not our explicit throw
 
     await createDispatchLog({
       userId: lead.userId,
@@ -148,16 +171,17 @@ export async function dispatchBatch(
       whatsappNumber: lead.whatsappNumber,
       messageSent: lead.generatedPitch,
       success,
-      errorMessage: success ? null : 'Send failed — see logs',
+      errorMessage,
       attemptNumber: 1,
       dispatchedAt: Timestamp.now(),
     });
 
-    await updateLeadStatus(
-      settings.userId,
-      lead.id,
-      success ? 'Pitched' : 'Failed'
-    );
+    await updateLead(settings.userId, lead.id, {
+      status: finalStatus,
+      dispatchSuccess: success,
+      lastMessageSent: lead.generatedPitch,
+      lastMessageSentAt: Timestamp.now(),
+    });
 
     if (success) {
       sent++;

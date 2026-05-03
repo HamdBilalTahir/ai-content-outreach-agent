@@ -34,7 +34,8 @@ export async function updateIntelligenceRegistry(
   pipelineId: string,
   agentRole: string,
   blobUrl: string,
-  incrementVersion: boolean = true
+  incrementVersion: boolean = true,
+  lastChangeNote?: string
 ): Promise<string> {
   try {
     const existing = await getIntelligenceRegistry(
@@ -42,6 +43,10 @@ export async function updateIntelligenceRegistry(
       pipelineId,
       agentRole
     );
+
+    const changeNote = lastChangeNote
+      ? lastChangeNote.split('\n')[0].slice(0, 200)
+      : undefined;
 
     if (existing) {
       await db
@@ -51,6 +56,7 @@ export async function updateIntelligenceRegistry(
           blobUrl,
           version: incrementVersion ? existing.version + 1 : existing.version,
           lastUpdated: FieldValue.serverTimestamp(),
+          ...(changeNote && { lastChangeNote: changeNote }),
         });
       return existing.id;
     } else {
@@ -60,7 +66,9 @@ export async function updateIntelligenceRegistry(
         agentRole,
         blobUrl,
         version: 1,
+        createdAt: FieldValue.serverTimestamp(),
         lastUpdated: FieldValue.serverTimestamp(),
+        ...(changeNote && { lastChangeNote: changeNote }),
       });
       return ref.id;
     }

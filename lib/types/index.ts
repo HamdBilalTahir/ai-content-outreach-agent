@@ -5,6 +5,7 @@ export interface Pipeline {
   userId: string;
   name: string;
   description?: string;
+  clientSeedUrls?: string[];
   status: 'running' | 'paused' | 'stopped';
   connectionId: string | null;
   settings: {
@@ -27,12 +28,22 @@ export interface Niche {
   seedUrls: string[];
   blacklistedSignals: string[];
   aiReasoning?: string;
+  marketHypothesis?: string;
+  confidenceScore?: number;
+  researchCitations?: string[];
   pipelineGuardrails?: {
     maxDailyCrawls: number;
     maxDailyDispatches: number;
     minAiGapScore: number;
   };
-  lastCrawled: Timestamp;
+  // Niche health tracking (optional for backwards-compat; createNiche always sets them)
+  health_score?: number; // 0–100; starts at 100, drops 33 pts per failing session
+  consecutive_failures?: number; // incremented each session where qualified/total < 5%
+  status?: 'active' | 'cool-down';
+  coolDownReason?: string | null;
+  replacedNicheId?: string | null; // set on replacement niches only
+  replacedNicheName?: string | null;
+  lastCrawled: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -54,13 +65,28 @@ export interface Lead {
   crawlSource: string;
   dedupHash: string;
   socialMediaGapScore: number;
-  status: 'Qualified' | 'Pitched' | 'Failed';
+  status:
+    | 'Qualified'
+    | 'Pitched'
+    | 'Failed'
+    | 'incomplete'
+    | 'Closed'
+    | 'Rejected'
+    | 'Ghosted'
+    | 'Negotiating'
+    | 'approved';
   isSandbox?: boolean;
   dispatchStatus?: 'pending_approval' | 'approved';
   sandboxRejected?: boolean;
+  sandboxRejectionReason?: string | null;
   originalGeneratedPitch?: string;
+  // Populated by dispatcher after sending
+  lastMessageSent?: string | null;
+  lastMessageSentAt?: Timestamp | null;
+  dispatchSuccess?: boolean | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  analystNarrative?: string | null;
 }
 
 export interface PitchEvaluation {
@@ -95,6 +121,7 @@ export interface CrawlSession {
   nicheId: string;
   targetUrls: string[];
   discoveredBrands: string[];
+  processedBrands?: string[];
   leadsCreated: number;
   leadsQualified: number;
   agentReasoning: string;

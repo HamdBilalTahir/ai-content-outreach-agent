@@ -47,11 +47,15 @@ export async function POST(req: Request) {
 
     const signalId = await createFeedbackSignal(signal as any);
 
+    // Update lead status in firestore to the given outcome
+    const { updateLeadStatus } = await import('../../../../../lib/db/leads');
+    await updateLeadStatus(userId, leadId, outcome as any);
+
     // After logging feedback, run the Learner Agent to update Playbooks
     // We do this in the background to not block the UI response
     const { runLearnerAgent } =
       await import('../../../../../lib/agents/learnerAgent');
-    runLearnerAgent(userId, 'default-pipeline', signal as any).catch((err) => {
+    runLearnerAgent(userId, lead.pipelineId, signal as any).catch((err) => {
       console.error('Failed to run Learner Agent after feedback:', err);
     });
 
