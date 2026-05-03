@@ -191,19 +191,9 @@ function checkDuplicateAfterScrape(
   if (state.isDuplicate) return END;
 
   // Fail fast if no phone number
+  // The user requested: "We shouldn't even consider a lead no matter how strong if it doesn't have a contact info, so the nodes that come after the crawler should filter them out"
   if (!state.scrapedData?.whatsappNumber) {
-    // We only fail fast if it's not a sandbox run or if we still want to fail fast for sandbox?
-    // "highly qualified leads missing a phone number should still appear in the UI so the Overseer can manually enter a number."
-    // Wait, if we fail fast after scrape, we won't get a pitch or score, so we won't know if it's highly qualified.
-    // Let me re-read: "If no phone number is found on a website, the system must immediately abort the target. Push a narrative log...
-    // And for 8.5: "highly qualified leads missing a phone number should still appear in the UI so the Overseer can manually enter a number."
-    // Ah, these requirements clash if we drop BEFORE generating the pitch!
-    // But wait, "If is_sandbox == true, do not drop leads with missing phone numbers."
-    // So if isSandbox, we continue, else we drop?
-    // Let's implement that:
-    if (!state.isSandbox) {
-      return END;
-    }
+    return END;
   }
 
   return 'sanitizeImagesNode';

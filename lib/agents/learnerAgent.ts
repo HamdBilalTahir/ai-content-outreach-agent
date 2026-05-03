@@ -79,6 +79,22 @@ export async function runBatchLearnerAgent(
     `[Agent: Learner] Approved: ${approvedLeads.length}, Rejected: ${rejectedLeads.length}, Edits: ${humanEditedMessages.length}`
   );
 
+  if (
+    approvedLeads.length === 0 &&
+    rejectedLeads.length === 0 &&
+    humanEditedMessages.length === 0
+  ) {
+    console.log(`[Agent: Learner] No feedback to process. Skipping synthesis.`);
+    if (sessionId) {
+      await appendAgentLog(
+        sessionId,
+        'system',
+        `No actionable feedback provided (0 approved, 0 rejected, 0 edits). Skipping intelligence synthesis.`
+      );
+    }
+    return;
+  }
+
   if (sessionId) {
     await appendAgentLog(
       sessionId,

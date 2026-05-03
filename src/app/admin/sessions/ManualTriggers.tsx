@@ -55,6 +55,7 @@ export default function ManualTriggers({
   const [agentLogs, setAgentLogs] = useState<any[]>([]);
   const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'leads' | 'rejected'>('leads');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
   const [viewingPlaybookContent, setViewingPlaybookContent] = useState<
     string | null
   >(null);
@@ -62,20 +63,35 @@ export default function ManualTriggers({
   const [viewingPlaybook, setViewingPlaybook] = useState<any>(null);
   const [synthesizing, setSynthesizing] = useState(false);
   const [localOverrides, setLocalOverrides] = useState<Record<string, any>>({});
+  const [successAlert, setSuccessAlert] = useState<string | null>(null);
 
   const logsContainerRef = React.useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const isAutoScrolling = React.useRef(false);
 
   useEffect(() => {
-    if (autoScroll) {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (successAlert) {
+      const timer = setTimeout(() => {
+        setSuccessAlert(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successAlert]);
+
+  useEffect(() => {
+    if (autoScroll && logsEndRef.current) {
+      isAutoScrolling.current = true;
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      setTimeout(() => {
+        isAutoScrolling.current = false;
+      }, 500);
     }
   }, [agentLogs, autoScroll]);
 
   const handleLogsScroll = () => {
-    if (!logsContainerRef.current) return;
+    if (!logsContainerRef.current || isAutoScrolling.current) return;
     const { scrollTop, scrollHeight, clientHeight } = logsContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
     setAutoScroll(isAtBottom);
   };
 
@@ -169,13 +185,24 @@ export default function ManualTriggers({
         if (!snapshot.empty) {
           // Sort client-side to find the most recent
           const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-          docs.sort((a: any, b: any) => {
-            const aTime = a.startedAt?.toMillis?.() || 0;
-            const bTime = b.startedAt?.toMillis?.() || 0;
-            return bTime - aTime;
-          });
-          const latest = docs[0];
-          setSessionId(`sandbox:${val}:${latest.id}`);
+          // Filter to only include sessions in an active state (not 'Ended')
+          const activeDocs = docs.filter(
+            (d: any) => d.sessionStatus !== 'Ended'
+          );
+          if (activeDocs.length > 0) {
+            activeDocs.sort((a: any, b: any) => {
+              const aTime = a.startedAt?.toMillis?.() || 0;
+              const bTime = b.startedAt?.toMillis?.() || 0;
+              return bTime - aTime;
+            });
+            const latest = activeDocs[0];
+            setSessionId(`sandbox:${val}:${latest.id}`);
+          } else {
+            setSessionId(null);
+            setStatus('idle');
+            setAgentLogs([]);
+            setQualifiedLeads([]);
+          }
         } else {
           setSessionId(null);
           setStatus('idle');
@@ -445,7 +472,14 @@ export default function ManualTriggers({
     if (!activePipelineId || !sessionId) return;
     setDispatching(true);
     try {
-      const finalLeads = displayLeads.filter((l) => selectedLeads.has(l.id));
+      const finalLeads = displayLeads
+        .filter((l) => selectedLeads.has(l.id) || l.triageStatus === 'rejected')
+        .map((l) => {
+          if (selectedLeads.has(l.id)) {
+            return { ...l, triageStatus: 'approved' };
+          }
+          return l;
+        });
 
       const res = await fetch('/api/admin/finalize-sandbox', {
         method: 'POST',
@@ -458,9 +492,16 @@ export default function ManualTriggers({
       });
       const data = await res.json();
       if (data.success) {
-        alert('Sandbox session finalized and approved leads dispatched!');
-        setStatus('Completed');
+        // Optimistically clear the UI to empty state since DB is updated in background
+        setSuccessAlert(
+          'Sandbox session finalized and approved leads dispatched!'
+        );
+        setStatus('idle');
         setSelectedLeads(new Set());
+        setSessionId(null);
+        setActivePipelineId('');
+        setAgentLogs([]);
+        setQualifiedLeads([]);
       } else {
         alert('Finalization failed: ' + data.error);
       }
@@ -529,6 +570,23 @@ export default function ManualTriggers({
 
   return (
     <div className="space-y-6 relative">
+      {successAlert && (
+        <div className="fixed top-4 right-4 z-50 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-lg transition-opacity duration-500 flex items-center gap-2">
+          <svg
+            className="w-5 h-5 text-green-500"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span className="font-medium">{successAlert}</span>
+        </div>
+      )}
+
       {showSetupModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full space-y-4">
@@ -1088,29 +1146,47 @@ export default function ManualTriggers({
                 </p>
               </div>
             </div>
-            <div className="mt-4 flex gap-4 border-b">
-              <button
-                onClick={() => setActiveTab('leads')}
-                className={`pb-2 text-sm font-medium border-b-2 ${activeTab === 'leads' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-              >
-                Leads
-              </button>
-              <button
-                onClick={() => setActiveTab('rejected')}
-                className={`pb-2 text-sm font-medium border-b-2 ${activeTab === 'rejected' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-              >
-                Rejected
-              </button>
+            <div className="mt-4 flex justify-between items-center border-b">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setActiveTab('leads')}
+                  className={`pb-2 text-sm font-medium border-b-2 ${activeTab === 'leads' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                >
+                  Leads
+                </button>
+                <button
+                  onClick={() => setActiveTab('rejected')}
+                  className={`pb-2 text-sm font-medium border-b-2 ${activeTab === 'rejected' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+                >
+                  Rejected
+                </button>
+              </div>
+              <div className="mb-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="text-xs border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Qualified">Qualified</option>
+                  <option value="incomplete">Incomplete</option>
+                  <option value="Failed">Failed</option>
+                </select>
+              </div>
             </div>
           </div>
           <div className="bg-gray-100 px-4 py-2 flex justify-between items-center border-b border-gray-200">
             <button
               onClick={() => {
-                const leadsToDisplay = displayLeads.filter((l) =>
-                  activeTab === 'rejected'
-                    ? l.triageStatus === 'rejected' || l.sandboxRejected
-                    : l.triageStatus !== 'rejected' && !l.sandboxRejected
-                );
+                const leadsToDisplay = displayLeads.filter((l) => {
+                  const matchesTab =
+                    activeTab === 'rejected'
+                      ? l.triageStatus === 'rejected' || l.sandboxRejected
+                      : l.triageStatus !== 'rejected' && !l.sandboxRejected;
+                  const matchesStatus =
+                    statusFilter === 'All' || l.status === statusFilter;
+                  return matchesTab && matchesStatus;
+                });
                 const allSelected = leadsToDisplay.every((l) =>
                   selectedLeads.has(l.id)
                 );
@@ -1125,11 +1201,15 @@ export default function ManualTriggers({
               className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
             >
               {(() => {
-                const leadsToDisplay = displayLeads.filter((l) =>
-                  activeTab === 'rejected'
-                    ? l.triageStatus === 'rejected' || l.sandboxRejected
-                    : l.triageStatus !== 'rejected' && !l.sandboxRejected
-                );
+                const leadsToDisplay = displayLeads.filter((l) => {
+                  const matchesTab =
+                    activeTab === 'rejected'
+                      ? l.triageStatus === 'rejected' || l.sandboxRejected
+                      : l.triageStatus !== 'rejected' && !l.sandboxRejected;
+                  const matchesStatus =
+                    statusFilter === 'All' || l.status === statusFilter;
+                  return matchesTab && matchesStatus;
+                });
                 if (leadsToDisplay.length === 0) return 'Select All';
                 const allSelected = leadsToDisplay.every((l) =>
                   selectedLeads.has(l.id)
@@ -1139,21 +1219,29 @@ export default function ManualTriggers({
             </button>
           </div>
           <div className="p-4 flex-1 overflow-y-auto space-y-4">
-            {displayLeads.filter((l) =>
-              activeTab === 'rejected'
-                ? l.triageStatus === 'rejected' || l.sandboxRejected
-                : l.triageStatus !== 'rejected' && !l.sandboxRejected
-            ).length === 0 ? (
+            {displayLeads.filter((l) => {
+              const matchesTab =
+                activeTab === 'rejected'
+                  ? l.triageStatus === 'rejected' || l.sandboxRejected
+                  : l.triageStatus !== 'rejected' && !l.sandboxRejected;
+              const matchesStatus =
+                statusFilter === 'All' || l.status === statusFilter;
+              return matchesTab && matchesStatus;
+            }).length === 0 ? (
               <div className="text-sm text-gray-500 text-center mt-10">
-                No leads found in this tab.
+                No leads found matching these filters.
               </div>
             ) : (
               displayLeads
-                .filter((l) =>
-                  activeTab === 'rejected'
-                    ? l.triageStatus === 'rejected' || l.sandboxRejected
-                    : l.triageStatus !== 'rejected' && !l.sandboxRejected
-                )
+                .filter((l) => {
+                  const matchesTab =
+                    activeTab === 'rejected'
+                      ? l.triageStatus === 'rejected' || l.sandboxRejected
+                      : l.triageStatus !== 'rejected' && !l.sandboxRejected;
+                  const matchesStatus =
+                    statusFilter === 'All' || l.status === statusFilter;
+                  return matchesTab && matchesStatus;
+                })
                 .map((lead) => (
                   <div
                     key={lead.id}

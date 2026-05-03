@@ -52,12 +52,15 @@ export async function POST(req: Request) {
     });
 
     try {
-      await updateLead(userId, leadId, {
+      const updatePayload: any = {
         sandboxRejectionReason: sandboxRejectionReason || null,
         status: triageStatus === 'rejected' ? 'Failed' : 'Qualified',
         sandboxRejected: triageStatus === 'rejected',
-        dispatchStatus: triageStatus === 'approved' ? 'approved' : undefined,
-      });
+      };
+      if (triageStatus === 'approved') {
+        updatePayload.dispatchStatus = 'approved';
+      }
+      await updateLead(userId, leadId, updatePayload);
     } catch (e) {
       console.error('Failed to update lead document with triage status', e);
     }

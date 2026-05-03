@@ -6,6 +6,79 @@
 
 ---
 
+> ### Fix undefined dispatchStatus in triage-lead
+>
+> - **What changed:** Removed undefined dispatchStatus assignment in update payload.
+> - **Why:** Firestore requires either a defined value or the field omitted instead of undefined.
+> - **Files:**
+>   - `src/app/api/admin/triage-lead/route.ts`
+
+## 🗓️ **2026-05-03**
+
+---
+
+### ✨ Features
+
+---
+
+> ### Empty Learner Agent Synthesis State Check
+>
+> - **What changed:** Added an early exit guard inside `runBatchLearnerAgent` to gracefully bypass LLM playbook analysis if no actionable feedback (0 approved, 0 rejected, 0 edits) was provided by the user during the Sandbox review.
+> - **Why:** Prevents unnecessary and potentially confusing Gemini agent executions that would otherwise attempt to generate feedback intelligence from an empty payload, saving API costs and maintaining clean logs.
+> - **Files:**
+>   - `lib/agents/learnerAgent.ts`
+
+---
+
+> ### Improved Sandbox Finalization UX & Stability
+>
+> - **What changed:** Replaced the blocking browser `alert()` with a smooth, non-intrusive auto-dismissing green toast notification for successful sandbox finalizations. Fixed a UI bug where finalized sessions didn't properly clear from the dropdown context, causing visual state anomalies. Re-wired the `sessionStatus` update in `/api/admin/finalize-sandbox` to write `Ended` instead of `Completed`, and updated the UI to clear local state optimistically.
+> - **Why:** Solves issues where the green success alert remained stuck due to unmount race conditions or incomplete state resets. Ensures the sandbox tray robustly returns to a clean, empty state ready for the next test run without lingering pipelines.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+>   - `src/app/api/admin/finalize-sandbox/route.ts`
+
+---
+
+> ### Status filter added to Sandbox Review Tray
+>
+> - **What changed:** Added a dropdown to filter leads by their processing status in the Sandbox Review Tray.
+> - **Why:** Allows users to easily sort and manage qualified, incomplete, or failed leads during sandbox review.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+
+---
+
+### 🐛 Fixes
+
+---
+
+> ### Fixed auto-scroll bug in Sandbox Diagnostics Terminal
+>
+> - **What changed:** Implemented a suspension period for user-scroll detection during programmatic auto-scrolling.
+> - **Why:** Prevents smooth scrolling mechanics from erroneously disabling the auto-scroll feature when new messages push the terminal up.
+> - **Files:**
+>   - `src/app/admin/sessions/ManualTriggers.tsx`
+
+---
+
+### 🧹 Refactors
+
+---
+
+> ### Hard filtering for missing contact information
+>
+> - **What changed:** Bypassed all downstream AI nodes for leads that lack a phone number immediately after scraping.
+> - **Why:** Saves compute and accurately discards incomplete targets without wasting processing resources.
+> - **Files:**
+>   - `lib/pipeline/runPipeline.ts`
+
+---
+
+### 🐛 Fixes
+
+---
+
 > ### Unipile Dispatcher Migration & Strict Target Rules
 >
 > - **What changed:** Swapped the custom webhook out for Unipile's `/chats` API within `whatsappDispatcher`. Implemented `getPrimaryConnection` to accurately route outgoing messages from the user's active connection instance ID. Added E.164 phone number formatting with the strict Unipile `@s.whatsapp.net` suffix and explicit backend/frontend logging for message sending. Filtered dispatch leads more strictly to include `dispatchStatus === 'approved'` or purely `status === 'Qualified'` while explicitly screening out anything marked `'rejected'`. Added UNIPILE_DSN parsing support, and captured explicit 404 "Number not on WhatsApp" error throws for invalid leads.

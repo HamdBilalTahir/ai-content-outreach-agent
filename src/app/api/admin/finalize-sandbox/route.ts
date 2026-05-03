@@ -33,16 +33,30 @@ export async function POST(req: Request) {
 
     // 1. Process local candidates
     for (const localLead of candidates) {
+      // determine correct final status
+      let finalStatus =
+        localLead.triageStatus === 'rejected' ? 'Failed' : 'Qualified';
+      if (!localLead.whatsappNumber && finalStatus !== 'Failed') {
+        finalStatus = 'incomplete';
+      }
+
       // update sandbox lead in db
-      await updateLead(userId, localLead.id, {
+      const updatePayload: any = {
         whatsappNumber: localLead.whatsappNumber,
         generatedPitch: localLead.generatedPitch,
-        status: localLead.triageStatus === 'rejected' ? 'Failed' : 'Qualified',
+        status: finalStatus,
         sandboxRejected: localLead.triageStatus === 'rejected',
         sandboxRejectionReason: localLead.sandboxRejectionReason || null,
-        dispatchStatus:
-          localLead.triageStatus === 'approved' ? 'approved' : undefined,
-      });
+      };
+      if (localLead.triageStatus === 'approved') {
+        updatePayload.dispatchStatus = 'approved';
+      } else if (localLead.dispatchStatus) {
+        // If it had a dispatchStatus and we are not approving it, we can nullify it or leave it alone
+        // But to avoid undefined error:
+        updatePayload.dispatchStatus = null;
+      }
+
+      await updateLead(userId, localLead.id, updatePayload);
 
       const candidate = await getLeadById(userId, localLead.id);
       if (!candidate) continue;
@@ -108,7 +122,7 @@ export async function POST(req: Request) {
       sessionRef = db.collection('crawlSessions').doc(sessionId);
     }
     await sessionRef.update({
-      sessionStatus: 'Completed',
+      sessionStatus: 'Ended',
     });
 
     return NextResponse.json({ success: true });
