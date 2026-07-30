@@ -34,7 +34,8 @@ that forced them are the expensive part to rediscover.
 | 6b¹   | Send tool, text contracts, reinit ladder          | ~750         | `8c0e61a` |
 | 6b²   | Nudge, booking email, email views                 | ~1,400       | —         |
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
-| 7b    | make_phone_call, review_transcript, EL svc        | ~5,030       | —         |
+| 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
+| 7b²   | make_phone_call, review orchestrator, EL svc      | ~4,430       | —         |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
