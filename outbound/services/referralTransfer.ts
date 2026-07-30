@@ -39,18 +39,24 @@ import { cancelPendingTasks } from './notInterested';
 /** The NEW chat's review highlight. NOT a proactive-stop label — comms still go out. */
 export const REFERRAL_HIGHLIGHT_LABEL = 'referral';
 
-/** The referred person, as the review tools surface them. Keys come in two spellings. */
+/**
+ * The referred person, as the review tools surface them.
+ *
+ * Keys come in two spellings, and every field is nullable as well as optional: the LLM classifiers
+ * return explicit `null` for a detail they did not find, so a signal object arrives with nulls rather
+ * than absent keys. `pick` treats both identically.
+ */
 export interface ReferredPerson {
-  email?: string;
-  referred_email?: string;
-  phone?: string;
-  referred_phone?: string;
-  first_name?: string;
-  referred_first_name?: string;
-  last_name?: string;
-  referred_last_name?: string;
-  title?: string;
-  referred_title?: string;
+  email?: string | null;
+  referred_email?: string | null;
+  phone?: string | null;
+  referred_phone?: string | null;
+  first_name?: string | null;
+  referred_first_name?: string | null;
+  last_name?: string | null;
+  referred_last_name?: string | null;
+  title?: string | null;
+  referred_title?: string | null;
   [k: string]: unknown;
 }
 

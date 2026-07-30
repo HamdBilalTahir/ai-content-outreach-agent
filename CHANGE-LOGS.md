@@ -6,6 +6,32 @@
 
 ---
 
+> ### Outbound agent port — Phase 7b¹: the review toolkit, and three deferrals closed
+>
+> - **What changed:** Ported the LLM-analysis toolkit the review tools share, and used it to close three open deferrals in one go.
+>   - `tools/reviewHelpers.ts` — `llmText`, `parseJsonResponse`, `resolveStageAndSkills`, `extractFromTranscriptWithSchema`, `detectChannelPreferences`, and `classifyCallOutcome`. Extracted from `review_call_transcript.py`, which the source also imports from `email_review` — porting them as their own module makes that shared surface explicit.
+>   - `services/conversationSummary.ts` — **deferred out of Phase 5.** Needed the model layer.
+>   - `services/emailReview.ts` — **the LLM half, deferred out of Phase 6b**: `emailOptOutDetected`, `capturePhoneConsentFromReply`, and `reviewEmail` with its schema extraction, referral/decline detection, and summary refresh.
+> - **Why: every one of these fails toward the conservative answer, and the directions are deliberately NOT uniform.** They are asserted individually because normalizing them is the likely mistake:
+>   - `llmText` → `''`, so a caller sees "no verdict" rather than a wrong one.
+>   - `detectChannelPreferences` → safe defaults, in which **every flag is false**, so an unparseable verdict changes nothing.
+>   - `classifyCallOutcome` → `no_commitment`, so a bad read **never auto-books a meeting**. The prompt's tie-break pushes the same way: when genuinely unsure whether a prospect committed to ATTEND a demo or merely arranged a callback, choose callback.
+>   - `emailOptOutDetected` → **TRUE** on a missing verdict. The regex already matched, so failing toward honouring a possible opt-out is never weaker than regex-only, and is compliance-safe.
+>   - The callback-number check → **FALSE**. TCPA stakes: the phone channel is never opened on a guess.
+>
+>   Those last two point in opposite directions, and each is correct for its own stake.
+>
+> - **The PEWC distinction is the sharpest edge in this increment.** `capturePhoneConsentFromReply` reopens the phone channel either way, but only schedules an automated call when OUR outbound email carried the disclosure — that is prior express _written_ consent. Without it the channel reopens for MANUAL follow-up and **no automated call is placed**. Getting it backwards would place an AI voice call without written consent, so both branches are tested explicitly, and this is why the disclosure marker has to stay byte-stable.
+> - **Two prompt rules preserved verbatim, with tests asserting they are still present**, because both encode a lesson: "declining is NOT an opt-out" (conflating them opts a prospect out of a channel they never asked to leave), and "a referral OUTRANKS `followup_email`" — the source records that a deterministic backstop once promoted the prospect's OWN address to a referral whenever a loose regex matched, forking a duplicate chat and stranding a booked demo. That backstop was removed; classification is the model's job alone.
+> - **Files:**
+>   - `outbound/tools/reviewHelpers.ts`
+>   - `outbound/services/{conversationSummary,emailReview,referralTransfer}.ts`
+>   - `outbound/__tests__/tools/reviewHelpers.test.ts`
+> - **Verification:** 1,017 tests across 23 suites (39 new, all passing on the first run), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **Deliberate divergence in `resolveStageAndSkills`:** the source resolves the stage from an `appraisals` subcollection before falling back to the chat document, and loads skills through the INBOUND (unfiltered) resolver. Neither applies here. `appraisals` has no outbound equivalent — outbound contacts are vehicle-less B2B prospects, which is why Phase 1 did not port that subsystem — so the appraisal branch would be permanently inert; and an outbound review wants the skills active for an OUTBOUND chat, which is what the outbound-filtered resolver returns. Reading stage and labels straight off the chat document produces the same value the source's own fallback does.
+>
+> ---
+>
 > ### Outbound agent port — Phase 8a: the model layer
 >
 > - **What changed:** Ported the multi-provider model layer. **This was done ahead of Phase 7b on purpose** — see the sequencing note below.

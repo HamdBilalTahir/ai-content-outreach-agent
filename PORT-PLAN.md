@@ -40,7 +40,7 @@ that forced them are the expensive part to rediscover.
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **978 tests / 22 suites**, `tsc` and `eslint` clean.
+Current: **1,017 tests / 23 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -121,21 +121,24 @@ The LLM half of `email_review` is NOT here — see Phase 8.
 
 Closed the `callScope` deferral that had been open since Phase 2.
 
-### Phase 7b — the call tools and the agent service (~5,030 lines)
+### Phase 7b¹ — the review toolkit (~600 lines) — ✅ DONE
 
-`tools/make_phone_call.py` (1,975) · `tools/review_call_transcript.py` (1,683) ·
-`elevenlabs_agent_service.py` (1,189) · `views/elevenlabs_webhook.py` (242) ·
-`views/conversation_init_webhook.py` (207) · `views/voice_settings.py` (150) ·
-`views/voice_connect.py` (53)
+The six LLM-analysis helpers from `review_call_transcript.py`, plus `conversation_summary.py` and the
+LLM half of `email_review.py`. Closed FOUR ledger rows at once.
 
-**Start with `review_call_transcript.py`.** It is on the critical path twice: it holds the LLM helpers
-(`_llm_text`, `_parse_json_response`, `extract_from_transcript_with_schema`,
-`detect_channel_preferences`, `_resolve_stage_and_skills`) that Phase 8's re-sequenced email review
-work needs, so porting it first unblocks that too. Expect it to need the model layer, which means it
-may have to land alongside or after Phase 8 — check its imports before committing to an order.
+### Phase 7b² — the call tools and the agent service (~4,430 lines)
 
-`make_phone_call` depends on the voice concurrency ledger (Phase 4), the dial guard and call index
-(Phase 3), and the call scope (Phase 7a) — all present.
+`tools/make_phone_call.py` (1,975) · `tools/review_call_transcript.py` — the orchestrator, minus the
+helpers already ported (~1,100 remaining) · `elevenlabs_agent_service.py` (1,189) ·
+`views/elevenlabs_webhook.py` (242) · `views/conversation_init_webhook.py` (207) ·
+`views/voice_settings.py` (150) · `views/voice_connect.py` (53)
+
+Everything these need now exists: the voice concurrency ledger (Phase 4), the dial guard and call index
+(Phase 3), the call scope (Phase 7a), the model layer (Phase 8a), and the review toolkit (Phase 7b¹).
+
+`review_call_transcript`'s remaining body is the orchestrator — fetch the transcript, classify, then act
+on the outcome (book, schedule a callback, transfer a referral, mark not-interested, finalize an
+unresolved call). Its HubSpot booking calls will defer to Phase 9.
 
 ### Phase 8a — the model layer (~1,400 lines) — ✅ DONE
 
