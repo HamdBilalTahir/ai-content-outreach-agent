@@ -309,7 +309,12 @@ export type ToolStatus =
   | 'deferred';
 
 export interface ToolResult {
-  status?: ToolStatus | string;
+  /**
+   * A named status, or a bare numeric HTTP code. The number is not an accident: the Unipile send
+   * path returns the raw response status, and `deriveMessageStatus` treats `>= 400` as a failed
+   * delivery. Narrowing this to `string` would make that branch unreachable from typed callers.
+   */
+  status?: ToolStatus | string | number;
   success?: boolean | string;
   message?: string;
   reason?: string;

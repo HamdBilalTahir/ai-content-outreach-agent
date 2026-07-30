@@ -6,6 +6,34 @@
 
 ---
 
+> ### Outbound agent port — Phase 1: the data-access layer
+>
+> - **What changed:** Replaced all 128 `inbound_agent` imports the source relied on with five native modules under `outbound/firebase/`, plus an in-memory Firestore double for the test suites.
+>   - `chat.ts` — memory, tasks, labels, the rapid-queue soft lock, pending-call records, LLM usage logs, message history, and the Bedrock-format normalizers (`normalizeMessageContent` / `normalizeBedrockMessage` / `normalizeToolResultContent`, plus `extractInfo` and `getFileTypeFromUrl`).
+>   - `outboundChatMessages.ts` — the `messages_v3` / `activities` / `notifications` writers, including the outbound-specific rule that a `make_phone_call` card is written **only** when the call was actually placed (`status === 'in_progress'` _and_ a truthy `call_id`); a deferred/skipped/blocked/errored call becomes an activity with no conversation card.
+>   - `agent.ts` — `getAgent`, `getAgentActions` (batched shared-action resolution), `getEnabledFunctionsForAgent`, `getAgentDataForPrompt`, `getVoiceAgentConfig`, with the `subagent → lead_ai` and `oversee_agent → parent_agent` inheritance rules.
+>   - `skills.ts` — `getSkillsForAgent` with by-**name** parent inheritance (an override with `status: 'inactive'` is how an operator disables an inherited skill), `getAvailableStages`, `withCanonicalStages`.
+>   - `prospect.ts` — the stage machine: forward-only transitions, `Lost` terminal, the **Lead lock** (once a chat reaches `Lead` its `stage` never changes; everything after is a `sub_stage`), and promote-then-substage for a post-Lead value arriving at a pre-Lead chat.
+>   - `outbound/testSupport/mockFirestore.ts` — an in-memory Firestore double modelling the semantics the ported code depends on: `update()` rejects on a missing document, dot-path field updates, and resolved `serverTimestamp`/`increment`/`arrayUnion`/`arrayRemove`/`delete` sentinels.
+> - **Why:** The source's outbound package is not self-contained — it reaches into the sibling inbound Django app in 128 places. Collapsing that into five native modules is what makes the rest of the port possible without importing a second app's schema. The behavioural _why_ in the source comments is preserved as TSDoc, because it documents non-obvious invariants (why `setMemory` writes dot-paths rather than merging a map, why `claim_task` fails closed while `try_consume` fails open) that a later "simplification" would quietly break.
+> - **Files:**
+>   - `outbound/firebase/chat.ts`
+>   - `outbound/firebase/outboundChatMessages.ts`
+>   - `outbound/firebase/agent.ts`
+>   - `outbound/firebase/skills.ts`
+>   - `outbound/firebase/prospect.ts`
+>   - `outbound/firebase/db.ts`
+>   - `outbound/types.ts`
+>   - `outbound/testSupport/mockFirestore.ts`
+>   - `outbound/__tests__/firebase/{chat,normalize,messageCards,prospect,skills}.test.ts`
+> - **Deliberate divergences from the source** (each recorded in the relevant module docstring):
+>   - **`messages_v2` is not ported.** For outbound it was strictly redundant — every field exists in `messages_v3`, and its unique `tool: {tool_name, input, output}` envelope is what `activities.toolCall` replaced. Dropping it also removed three live defects: `unread_count` was incremented **twice** per inbound customer message (the v2 and v3 writers each bumped it), the v2 writer computed its own timestamp instead of taking the turn's `base_timestamp` so its rows drifted by the turn duration (15–45s), and a `toolResult` with no matching `toolUse` raised inside it and abandoned the whole batch.
+>   - **The dealer-analytics subsystem behind `set_prospect_stage` is not ported** — `update_stage_analytics`, `record_lead_origin_source`, `decrement_crm_won_count`, `update_prospect_stage_on_metrics`, and the `appraisals` mirroring. That is the inbound product's per-dealer/per-vehicle reporting layer; `appraisals` has no outbound equivalent (outbound contacts are vehicle-less B2B prospects) and no outbound code path reads any of it. The `dealersId`/`companyId` arguments are still accepted and recorded on each transition, so call sites match the source and `stage_history` remains complete enough to build outbound reporting on later.
+>   - **`filter_tasks_within_window` is not ported** — it appears only in source comments; the outbound cron implements its own overdue-safe `_filter_due_outbound_tasks`.
+> - **Verification:** 198 tests across 6 suites, `tsc --noEmit` clean, `eslint outbound/` clean. One real type bug surfaced and was fixed: `ToolResult.status` was typed `string`, which made `deriveMessageStatus`'s numeric-HTTP-code branch (the Unipile send path returns a bare status) unreachable from typed callers.
+
+---
+
 > ### Outbound agent port — Phase 0: scaffolding, config, and Firestore seam
 >
 > - **What changed:** First phase of porting `ai-sales-backend/outbound_agent` (a 26,571-line Django app) to TypeScript under a new top-level `outbound/` directory. This phase lands the foundation only:

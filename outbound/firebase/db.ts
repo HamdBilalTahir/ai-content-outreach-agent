@@ -29,6 +29,7 @@ export const Timestamp = admin.firestore.Timestamp;
 export type FirestoreTimestamp = admin.firestore.Timestamp;
 
 export type DocumentData = admin.firestore.DocumentData;
+export type Query = admin.firestore.Query;
 export type DocumentReference = admin.firestore.DocumentReference;
 export type DocumentSnapshot = admin.firestore.DocumentSnapshot;
 export type QueryDocumentSnapshot = admin.firestore.QueryDocumentSnapshot;
