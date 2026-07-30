@@ -400,6 +400,20 @@ class MockDocRef {
     return new MockSnapshot(this.id, store.docs.get(this.path), this);
   }
 
+  /**
+   * Faithful to Firestore: `create()` REJECTS when the document already exists. That rejection is
+   * how the outbound chat creator resolves a concurrent-create race — only one caller wins, and the
+   * loser's error is expected and swallowed.
+   */
+  async create(data: Data): Promise<void> {
+    if (store.docs.has(this.path)) {
+      throw new Error(`ALREADY_EXISTS: document already exists: ${this.path}`);
+    }
+    const fresh: Data = {};
+    deepMerge(fresh, data);
+    store.docs.set(this.path, fresh);
+  }
+
   async set(data: Data, options?: { merge?: boolean }): Promise<void> {
     if (options?.merge) {
       const existing = store.docs.get(this.path) ?? {};

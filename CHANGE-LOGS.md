@@ -6,6 +6,34 @@
 
 ---
 
+> ### Outbound agent port — Phase 3: the outbound chat state & gate layer
+>
+> - **What changed:** Ported `outbound_agent/services/chat.py` (1,508 lines) to `outbound/services/chat.ts`. This module was **not in the original phase plan** — it surfaced while reading Phase 3's intended contents, because `not_interested.py` (and, transitively, the cron, the campaign pacer, and every send tool) imports from it. It is the dependency root for everything downstream, so it was pulled out into its own phase and the guard services shifted to Phase 4. What landed:
+>   - **The consent gate matrix** — `phoneOptedOut`, `emailOptedOut`, `smsOptedOut`, `emailInvalid`, `hasReachableChannel`, and the `isOptedOutValue` normalizer that accepts every type this flag has been written as across the codebase's history (real booleans, the DNC `"Y"`/`"N"` string form, textual booleans, numerics).
+>   - **The proactive-stop labels** — `not_interested` / `referral_transferred`, `stopsProactive`, and the cadence-complete marker (`setCadenceComplete` / `clearCadenceComplete` / `isCadenceComplete` / `isTerminalStage`).
+>   - **`taskChannelOpen`** — the deterministic gate on task CREATION (not just execution), so a task that would use an opted-out channel never exists; plus `markTaskSkipped` and `failOutboundTask`.
+>   - **`repairOutboundHistory`** — the Bedrock history self-heal, with `mergeConsecutiveRoles` and `stripUnpairedToolBlocks`.
+>   - **The turn-outcome scans** — `notesForFailedActions`, `turnIsByDesignGated`, `assistantTextIfNoTool`, `recentConversationContext`.
+>   - **Chat lifecycle** — `getOrCreateOutboundChat` (namespaced deterministic doc id + the migrated-chat re-enroll dedup), `buildDeterministicChatId`, `setChatType`, `getOutboundChatByEmail` / `getWebChatByEmail`.
+>   - **Cadence state** — the follow-up counters, the caps, `cadenceExhausted`, `shouldFallbackToEmail`, `hasEmailFallback`.
+>   - **The dial guard** — `recentDialBlocks` and `callAwaitingReview`.
+>   - **Persona resolution** — `resolveOutboundName`, `nameSlug`, `contactedMarkerKey` / `contactedMarkerValue`, `pronouncePhoneNumber`.
+>   - **Logging and indices** — `logEmailMessage`, `logInboundEmailToHistory`, `logEmailActivity`, `logInternalNote`, `updateEmailMeta`, the durable `outbound_call_index` (`save`/`get`/`delete`/`countActive`), `markCallCompletedInActivities` / `markCallCompletedInMessages`, `findInProgressCallId`.
+> - **Why:** This is the module that every later phase reads before doing anything irreversible, and its central invariant is a **trust split** that has to survive the port intact: consent gates read the code-owned **top-level** chat keys, never the LLM-writable `memory`. Channel _presence_ is read from `memory` precisely because clearing it only makes a channel look absent, which is the more restrictive direction. A gate that read consent from `memory` could be talked out of blocking by the model itself. Equally load-bearing is the three-way distinction the source is careful about and a "simplification" would collapse: opt-out flags encode the customer's **consent**, the `Lost` stage is our terminal **business outcome**, and the `not_interested` label is our **read of the conversation** — it stops proactive outreach but leaves inbound replies answerable, so a prospect who declines can still re-open the deal.
+> - **Files:**
+>   - `outbound/services/chat.ts`
+>   - `outbound/testSupport/mockFirestore.ts`
+>   - `outbound/__tests__/services/chatGates.test.ts`
+>   - `outbound/__tests__/services/chatState.test.ts`
+> - **Deferred to their own phases** (absent rather than stubbed, because a dynamic import of a module that does not exist yet would degrade silently through the source's own best-effort `catch`):
+>   - `ensure_meeting_host` — resolves the HubSpot contact owner; lands with the HubSpot phase. Its pure half, `meetingHostFact`, is ported now.
+>   - `finalize_unresolved_call` and `reconcile_stale_pending_calls` — need `voice_concurrency.release_voice_slot` and `stalled_recovery.ensure_next_step_after_call`; they land with the voice phase. Their pure predicate, `callAwaitingReview`, is ported now.
+> - **Verification:** 541 tests across 12 suites (185 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **One non-obvious behaviour pinned by test rather than "fixed":** `phoneOptedOut` consults **two** independent top-level keys, each with its own memory fallback — and chat creation seeds `phone_opt_out`/`email_opt_out` but **not** `block_phone`. So top-level `block_phone` is absent on every chat, its memory fallback is permanently live, and a memory `block_phone: "Y"` blocks even when top-level `phone_opt_out` is `false`. An initial test asserted the opposite (that the top-level `false` wins outright) and failed against a faithful port. The source's behaviour errs toward **blocking**, which is the safe direction for a consent gate — tidying the second check away would un-gate contacts the DNC path had blocked — so the test now pins the real semantics and the reason is recorded on the function.
+> - **Note:** Two further gaps in the Phase 1 Firestore double surfaced and were closed: `collection().listDocuments()` (added in Phase 2) and now `doc().create()`, whose absence made `getOrCreateOutboundChat` write nothing at all — the missing method threw, and the source's own concurrent-create-race `catch` swallowed it as expected. Both are cases where a fail-soft code path made a silent test-double gap look like passing code.
+
+---
+
 > ### Outbound agent port — Phase 2: the deterministic gating layer
 >
 > - **What changed:** Ported the nine source modules that decide _whether_ and _when_ an outbound touch may happen. Every one is pure logic or a single Firestore transaction — no integration keys, no LLM — so the whole layer is exhaustively testable and runs on a machine with nothing configured.
