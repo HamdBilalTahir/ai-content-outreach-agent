@@ -31,7 +31,7 @@ that forced them are the expensive part to rediscover.
 | 4     | Compliance & guard services                | ~1,740       | `efe5e34` |
 | 5     | Campaign lifecycle                         | ~2,050       | `c725948` |
 | 6     | Email send path (choke point)              | ~660         | `4a0ef4d` |
-| 6b¹   | Send tool, text contracts, reinit ladder   | ~750         | `PH6B`    |
+| 6b¹   | Send tool, text contracts, reinit ladder   | ~750         | `8c0e61a` |
 | 6b²   | Nudge, booking email, email views          | ~1,400       | —         |
 | 7     | Voice                                      | ~5,000       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
