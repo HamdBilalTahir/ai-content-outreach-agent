@@ -16,12 +16,14 @@
 
 ---
 
-> ### Turn off core `no-undef` for TS/JS files and drop an unused catch binding
+> ### Suppress three `no-undef` false positives inline and drop an unused catch binding
 >
-> - **What changed:** Added `"no-undef": "off"` to the TypeScript block in `eslint.config.mjs` (mirroring the existing `no-unused-vars` → `@typescript-eslint/no-unused-vars` handoff), and changed the playbook-fetch `catch (e)` in the Intelligence Hub page to a bare `catch`.
-> - **Why:** `js.configs.recommended` enables `no-undef`, which flagged `React.ReactNode` / `React.ChangeEvent` / `React.FormEvent` in `AuthProvider`, `SettingsManager`, and the login page as undefined — false positives, since those are type-only references to the React UMD namespace that TypeScript resolves and ESLint's scope analysis cannot. typescript-eslint recommends disabling the core rule for TS for exactly this reason; `tsc --noEmit` already catches genuinely undefined identifiers. Together with the unused `e`, these four errors were failing the `lint-staged` pre-commit hook on the files in this batch.
+> - **What changed:** Added a single `// eslint-disable-next-line no-undef` above the one `React.*` type annotation in each of `AuthProvider` (`React.ReactNode`), `SettingsManager` (`React.ChangeEvent`), and the login page (`React.FormEvent`), and changed the playbook-fetch `catch (e)` in the Intelligence Hub page to a bare `catch`.
+> - **Why:** `js.configs.recommended` enables `no-undef`, which flags those three annotations as undefined — false positives, since they are type-only references to the React UMD namespace that TypeScript resolves and ESLint's scope analysis cannot. Together with the unused `e`, these four errors were failing the `lint-staged` pre-commit hook on the files in this batch. Suppressed per-line rather than turning `no-undef` off repo-wide in `eslint.config.mjs`, so the rule keeps catching genuinely undefined identifiers everywhere else.
 > - **Files:**
->   - `eslint.config.mjs`
+>   - `src/app/AuthProvider.tsx`
+>   - `src/app/admin/settings/SettingsManager.tsx`
+>   - `src/app/login/page.tsx`
 >   - `src/app/admin/intelligence/page.tsx`
 
 ---

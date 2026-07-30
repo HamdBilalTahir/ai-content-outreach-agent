@@ -28,9 +28,6 @@ const eslintConfig = [
       ...nextPlugin.configs["core-web-vitals"].rules,
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": "error",
-      // TypeScript resolves identifiers (incl. the React UMD namespace used in
-      // type positions) itself; core no-undef only produces false positives here.
-      "no-undef": "off",
       "@next/next/no-img-element": "warn"
     },
   },

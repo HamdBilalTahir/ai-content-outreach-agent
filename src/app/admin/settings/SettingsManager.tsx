@@ -38,6 +38,7 @@ export default function SettingsManager({
     }
   };
 
+  // eslint-disable-next-line no-undef -- `React` here is a type-only reference to the UMD namespace, which TS resolves
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
 

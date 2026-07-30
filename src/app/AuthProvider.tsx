@@ -21,6 +21,7 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+// eslint-disable-next-line no-undef -- `React` here is a type-only reference to the UMD namespace, which TS resolves
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);

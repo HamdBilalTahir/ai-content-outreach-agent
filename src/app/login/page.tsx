@@ -68,6 +68,7 @@ export default function LoginPage() {
     }
   };
 
+  // eslint-disable-next-line no-undef -- `React` here is a type-only reference to the UMD namespace, which TS resolves
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
