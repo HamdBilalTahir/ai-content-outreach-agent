@@ -6,6 +6,31 @@
 
 ---
 
+> ### Outbound agent port — Phase 6b: the send tool, the shared text contracts, and the reinitiation ladder
+>
+> - **What changed:** Ported the email modules that are genuinely unblocked, and established the shared text contract the plan flagged as needing an owner.
+>   - `services/emailText.ts` — **the shared deterministic email-text contracts**, in one module. The PEWC disclosure and its marker, the quoted-reply stripper, the opt-out and auto-reply matchers, the three outbound-copy classifiers, and the phone/subject helpers. In the source these are split across `tools/email.py` and `inbound_email_nudge.py` with the review importing from both; co-locating them makes the contract explicit and removes a cycle the port would otherwise have to reproduce.
+>   - `tools/email.ts` — the `send_email` tool, complete, with all three of its deterministic gates on the model's copy.
+>   - `services/emailReview.ts` — the deterministic half: the suppression-reinitiation ladder, the thread readers, and `pewcDisclosureOnRecord`.
+> - **Why:** The three gates in the send tool all exist because the model composes the body and will otherwise assert things we cannot back — and in each case a **false positive is the expensive direction**, because it would block ordinary cold outreach. So each classifier is tested for what it must NOT match as carefully as for what it must:
+>   1. **Booking confirmation** — an email claiming a confirmed meeting only goes out when a booking actually succeeded. Generic outreach ("would you be open to a demo?", proposing times) must not match.
+>   2. **No-answer premise** — a "couldn't reach you" email requires a FRESH unanswered call on record, and fails CLOSED on a missing or unparseable stamp, because the alternative is an email whose stated premise never happened. Generic "book a call" / "hop on a call" language must not match, and email-only contacts are exempt entirely since there is no call to tie it to.
+>   3. **Missing join link** — appended deterministically. The link must never depend on the model remembering to paste it, or the customer gets a "Demo confirmed" email they cannot act on even though the booking set the link in the same turn.
+>
+>   The **`stripQuotedReply` → `OPT_OUT_RE` ordering is load-bearing and now pinned by a test that asserts both directions**: our own CAN-SPAM footer contains the words "opt out", so an unstripped reply quoting it matches the opt-out matcher. The test shows the raw reply matching and the stripped reply not matching, which is the actual bug being prevented.
+>
+>   The **reinitiation ladder is three-way** because the right response to a suppressed address emailing us depends entirely on why it was suppressed: consent lifts (a direct inquiry is an express invitation), complaint NEVER auto-lifts (a wrong automated guess is expensive, so it escalates), and deliverability re-verifies — their ability to SEND is not evidence of our ability to DELIVER — lifting only on `valid`, or probing once with a label that makes a later bounce permanent.
+>
+> - **Files:**
+>   - `outbound/services/{emailText,emailReview}.ts`
+>   - `outbound/tools/email.ts`
+>   - `outbound/__tests__/services/emailConversation.test.ts`
+> - **Verification:** 892 tests across 20 suites (70 new, all passing on the first run), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **Plan revision — the rest of the email conversation work is blocked by phases that come AFTER it, so it is re-sequenced rather than stubbed.** `email_review`'s remaining half is four LLM intent checks, and every helper they call (`_llm_text`, `_parse_json_response`, `extract_from_transcript_with_schema`, `detect_channel_preferences`, `_resolve_stage_and_skills`) lives in `tools/review_call_transcript.py` — **Phase 7** — while the summary refresh needs the model layer in **Phase 8**. Porting them now would mean stubbing five functions, which the ground rules forbid. So the opt-out intent confirmation, the callback-number confirmation, schema extraction, referral/not-interested detection, and the summary refresh move to Phase 8, and `PORT-PLAN.md` records each in the deferral ledger. The still-portable remainder — the inbound nudge, the booking email, and the two email views — stays as Phase 6b.
+> - **Note:** The PEWC disclosure wording is flagged in the source as pending counsel approval and is transcribed **verbatim**, with a test asserting the text still contains its own marker and the three required TCPA elements. Code keys on the marker, not the full text, so the marker must stay byte-stable: the send tool counts a consent ask only when the body contains it, and the review distinguishes written from mere prior-express consent by finding it in our own sent copy.
+>
+> ---
+>
 > ### Outbound agent port — Phase 6: the email send path
 >
 > - **What changed:** Ported the email choke point and its transport, and closed the one deferral left open by Phase 4.

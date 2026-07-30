@@ -31,13 +31,14 @@ that forced them are the expensive part to rediscover.
 | 4     | Compliance & guard services                | ~1,740       | `efe5e34` |
 | 5     | Campaign lifecycle                         | ~2,050       | `c725948` |
 | 6     | Email send path (choke point)              | ~660         | `4a0ef4d` |
-| 6b    | Email conversation handling                | ~2,150       | —         |
+| 6b¹   | Send tool, text contracts, reinit ladder   | ~750         | `PH6B`    |
+| 6b²   | Nudge, booking email, email views          | ~1,400       | —         |
 | 7     | Voice                                      | ~5,000       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
 | 9     | HubSpot / CRM                              | ~2,700       | —         |
 | 10    | HTTP surface & backfills                   | ~1,500       | —         |
 
-Current: **822 tests / 19 suites**, `tsc` and `eslint` clean.
+Current: **892 tests / 20 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -57,7 +58,15 @@ Current: **822 tests / 19 suites**, `tsc` and `eslint` clean.
    calls, and is independently complete and verifiable, so it shipped as Phase 6. The
    conversation-handling half became Phase 6b.
 
-Expect more of these. The source's import graph is not the directory structure.
+5. **The rest of email conversation handling is blocked by LATER phases, so it was re-sequenced.**
+   `email_review`'s remaining half is four LLM intent checks whose helpers all live in
+   `tools/review_call_transcript.py` (Phase 7), plus a summary refresh needing the model layer
+   (Phase 8). Porting them now would mean stubbing five functions, which the ground rules forbid — so
+   they moved to Phase 8 and the deterministic half shipped alone.
+
+Expect more of these. The source's import graph is not the directory structure. Note the direction of
+this one: a phase can be blocked by a phase that comes _after_ it, and the fix is to re-sequence, not
+to stub.
 
 ## Remaining phases
 
@@ -84,25 +93,25 @@ and add them in Phase 9. This is a real seam, not a shortcut.
 
 Also closed `reputation.emailDailySummary` (deferred out of Phase 4) and wired it into the cron.
 
-### Phase 6b — email conversation handling (~2,150 lines)
+### Phase 6b¹ — send tool, text contracts, reinitiation ladder (~750 lines) — ✅ DONE
 
-`email_review.py` (361) · `inbound_email_nudge.py` (422) · `inbound_booking_email.py` (233) ·
-`tools/email.py` (385) · `views/email_webhook.py` (471) · `views/email_compliance.py` (278)
+`tools/email.py` (385) · the deterministic half of `email_review.py`
 
-All of these call `emailSender.sendEmail`, which now exists, so the send path is no longer a
-blocker for any of them.
+The shared text contracts (PEWC constants, quote stripper, opt-out and auto-reply matchers, the three
+copy classifiers) now live in `services/emailText.ts` — one owner, rather than split across the tool
+and the nudge with the review importing from both. That resolves the shared-contract question this
+plan previously flagged.
 
-Two things to check before starting:
+### Phase 6b² — nudge, booking email, email views (~1,400 lines)
 
-- **`tools/email.py` carries the PEWC disclosure constants** (`PEWC_DISCLOSURE_MARKER`,
-  `PEWC_DISCLOSURE_TEXT`) that `email_review` also keys on deterministically — the marker is how code
-  confirms prior-express-WRITTEN consent (versus mere prior-express) before enabling an auto-call.
-  Port those constants wherever the first of the two modules lands; they are a shared contract, not
-  tool-local text. The disclosure wording is flagged in the source as counsel-approval-pending, so it
-  must be transcribed verbatim and not reworded.
-- **`tools/email.py` is an LLM tool**, so its dispatch wrapper may belong with Phase 8. Its body is
-  mostly deterministic (the booking-confirmation guard regex, no-answer freshness, subject-thread
-  handling) and that part is portable now.
+`inbound_email_nudge.py` (422) · `inbound_booking_email.py` (233) · `views/email_webhook.py` (471) ·
+`views/email_compliance.py` (278)
+
+All call `emailSender.sendEmail` and the `emailText` matchers, both of which now exist. The nudge's
+module-level imports are minimal (Firestore only), so it looks portable; verify the booking email and
+the two views before starting, since the views may belong with the Phase 10 HTTP surface.
+
+The LLM half of `email_review` is NOT here — see Phase 8.
 
 ### Phase 7 — voice (~5,000 lines)
 
