@@ -30,7 +30,7 @@ that forced them are the expensive part to rediscover.
 | 3     | Outbound chat state & gate layer           | 1,508        | `82cee65` |
 | 4     | Compliance & guard services                | ~1,740       | `efe5e34` |
 | 5     | Campaign lifecycle                         | ~2,050       | `c725948` |
-| 6     | Email send path (choke point)              | ~660         | `PH6`     |
+| 6     | Email send path (choke point)              | ~660         | `4a0ef4d` |
 | 6b    | Email conversation handling                | ~2,150       | —         |
 | 7     | Voice                                      | ~5,000       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
