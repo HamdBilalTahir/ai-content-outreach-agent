@@ -6,6 +6,26 @@
 
 ---
 
+> ### Outbound agent port — Phase 7a: the voice foundation
+>
+> - **What changed:** Ported the voice modules that other things depend on, and closed the oldest open deferral in the ledger.
+>   - `services/callScope.ts` — **the voice half, deferred out of Phase 2 and now closed.** `buildOutboundCallScope`, `buildInboundCallScope`, the two context scanners, `buildVoiceSchedulingBlock`, and `hubspotContextLine`. Phase 2 shipped only the deterministic consent-ask line; this completes the module.
+>   - `services/elevenlabs.ts` — the provider webhook attach.
+>   - `services/referralTransfer.ts` — the wrong-or-departed-contact re-route.
+>   - `services/notInterested.ts` — `cancelPendingTasks` is now exported rather than module-private, because the referral transfer needs exactly the same sweep on its source chat and duplicating it would let the two drift.
+> - **Why each of these three exists is worth stating, because none is obvious from its name:**
+>   - **The call scope is a FACTS FEED with no scripting.** It emits what is true — `call_type`, `prospect_stage`, contact on file, prior-contact counts, cadence position, today's date in the prospect's zone — and the voice agent's own prompt decides how to run the call. That separation is what lets the prompt be edited without touching code, so the suite asserts both that the facts are present and that no behavioural instruction leaks in. The `today` line is a scheduling fact specifically: it states that the earliest bookable demo is tomorrow, which is what stops the agent offering a slot it cannot honour.
+>   - **The webhook attach exists because connecting an agent from the front end only stores its id.** It never pushes platform settings, so the agent has no post-call webhook and the provider never calls back — a placed call completes and nothing downstream learns the outcome. The PATCH is strictly ADDITIVE, reading current settings and merging, so it can never clobber the agent's prompt, voice, or tools. A test asserts a pre-existing prompt survives the write.
+>   - **Referral transfer is NOT a decline, and the asymmetry between its two chats is the whole design.** The NEW chat gets warm identity and a `referral` HIGHLIGHT label that is deliberately not a proactive-stop label — comms still go out. The SOURCE gets only the stop label and its pending tasks cancelled, with **no referral-identity keys at all** so a later reader cannot mistake it for the referred contact, and with its stage and opt-outs untouched because a referral says nothing about that person's consent. It also rewrites the enrolled first-touch notes **in place** rather than recreating the task, so the ≤1-proactive invariant is never disturbed — otherwise a warm referral would get the cold-pitch opener enrollment scheduled.
+> - **Files:**
+>   - `outbound/services/{callScope,elevenlabs,referralTransfer,notInterested}.ts`
+>   - `outbound/__tests__/services/voiceFoundation.test.ts`
+> - **Verification:** 932 tests across 21 suites (40 new, all passing on the first run), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **Deferred:** the CRM contact lookup-or-create in the referral transfer arrives with the HubSpot phase. It is best-effort in the source — when it fails, `contact_id` stays null and the transfer proceeds: the new chat is still created, seeded warm, and scheduled. So the transfer is complete without it.
+> - **Phase scope note:** Phase 7 is ~5,500 source lines, the largest in the plan. This increment is the ~470-line foundation the rest builds on. The remainder — `make_phone_call` (1,975), `review_call_transcript` (1,683), `elevenlabs_agent_service` (1,189), and the four voice views (652) — becomes **Phase 7b**. `review_call_transcript` is on the critical path twice over: it holds the LLM helpers that Phase 8's re-sequenced email work needs, so it should lead that phase.
+>
+> ---
+>
 > ### Outbound agent port — Phase 6b: the send tool, the shared text contracts, and the reinitiation ladder
 >
 > - **What changed:** Ported the email modules that are genuinely unblocked, and established the shared text contract the plan flagged as needing an owner.

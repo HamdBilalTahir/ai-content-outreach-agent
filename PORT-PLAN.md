@@ -33,12 +33,13 @@ that forced them are the expensive part to rediscover.
 | 6     | Email send path (choke point)              | ~660         | `4a0ef4d` |
 | 6b¹   | Send tool, text contracts, reinit ladder   | ~750         | `8c0e61a` |
 | 6b²   | Nudge, booking email, email views          | ~1,400       | —         |
-| 7     | Voice                                      | ~5,000       | —         |
+| 7a    | Voice foundation                           | ~470         | `PH7A`    |
+| 7b    | make_phone_call, review_transcript, EL svc | ~5,030       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
 | 9     | HubSpot / CRM                              | ~2,700       | —         |
 | 10    | HTTP surface & backfills                   | ~1,500       | —         |
 
-Current: **892 tests / 20 suites**, `tsc` and `eslint` clean.
+Current: **932 tests / 21 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -113,25 +114,27 @@ the two views before starting, since the views may belong with the Phase 10 HTTP
 
 The LLM half of `email_review` is NOT here — see Phase 8.
 
-### Phase 7 — voice (~5,000 lines)
+### Phase 7a — voice foundation (~470 lines) — ✅ DONE
+
+`elevenlabs.py` (96) · `referral_transfer.py` (162) · the deferred voice half of `call_scope.py` (~215)
+
+Closed the `callScope` deferral that had been open since Phase 2.
+
+### Phase 7b — the call tools and the agent service (~5,030 lines)
 
 `tools/make_phone_call.py` (1,975) · `tools/review_call_transcript.py` (1,683) ·
-`elevenlabs_agent_service.py` (1,189) · `elevenlabs.py` (96) · `referral_transfer.py` (162) ·
-`views/elevenlabs_webhook.py` (242) · `views/conversation_init_webhook.py` (207) ·
-`views/voice_settings.py` (150) · `views/voice_connect.py` (53)
+`elevenlabs_agent_service.py` (1,189) · `views/elevenlabs_webhook.py` (242) ·
+`views/conversation_init_webhook.py` (207) · `views/voice_settings.py` (150) ·
+`views/voice_connect.py` (53)
 
-**Arrives with this phase**, deferred out of Phase 3 (both need `voice_concurrency.releaseVoiceSlot`
-and `stalled_recovery.ensureNextStepAfterCall`):
+**Start with `review_call_transcript.py`.** It is on the critical path twice: it holds the LLM helpers
+(`_llm_text`, `_parse_json_response`, `extract_from_transcript_with_schema`,
+`detect_channel_preferences`, `_resolve_stage_and_skills`) that Phase 8's re-sequenced email review
+work needs, so porting it first unblocks that too. Expect it to need the model layer, which means it
+may have to land alongside or after Phase 8 — check its imports before committing to an order.
 
-- `chat.finalizeUnresolvedCall`
-- `chat.reconcileStalePendingCalls`
-
-Their pure predicate `callAwaitingReview` is already ported and tested.
-
-Also the deferred half of `services/call_scope.py` — everything except
-`buildPhoneConsentAskLine`, which shipped in Phase 2. The remainder is voice-prompt assembly
-(`build_outbound_call_scope`, `build_voice_scheduling_block`, `outbound_call_context`, and the
-inbound-scope twins).
+`make_phone_call` depends on the voice concurrency ledger (Phase 4), the dial guard and call index
+(Phase 3), and the call scope (Phase 7a) — all present.
 
 ### Phase 8 — LLM turn engine (~4,400 lines)
 

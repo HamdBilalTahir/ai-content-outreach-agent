@@ -34,8 +34,11 @@ export interface NotInterestedResult {
 /**
  * Delete every not-yet-executed task so the cron fires nothing further — including a retrying
  * close-out email. Best-effort; returns the count deleted.
+ *
+ * Exported because the referral transfer needs exactly this on the SOURCE chat: both handlers stop a
+ * chat's proactive cadence, and duplicating the sweep would let the two drift apart.
  */
-async function cancelPendingTasks(chatId: string): Promise<number> {
+export async function cancelPendingTasks(chatId: string): Promise<number> {
   let n = 0;
   try {
     const snap = await db
