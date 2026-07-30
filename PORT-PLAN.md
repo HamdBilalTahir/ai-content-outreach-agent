@@ -35,7 +35,7 @@ that forced them are the expensive part to rediscover.
 | 6b²   | Nudge, booking email, email views                 | ~1,400       | —         |
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
 | 7b    | make_phone_call, review_transcript, EL svc        | ~5,030       | —         |
-| 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `PH8A`    |
+| 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
