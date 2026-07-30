@@ -358,6 +358,15 @@ class MockCollectionRef extends MockQuery {
   doc(id?: string): MockDocRef {
     return new MockDocRef(`${this.path}/${id ?? autoId()}`);
   }
+
+  /**
+   * Every document reference in the collection, IDs only — the real `listDocuments()` reads no
+   * field data. `upsertAreaCodes` uses it to learn which codes already exist so it can stamp
+   * `created_at` on new documents only.
+   */
+  async listDocuments(): Promise<MockDocRef[]> {
+    return store.paths(this.path).map((p) => new MockDocRef(p));
+  }
 }
 
 class MockDocRef {

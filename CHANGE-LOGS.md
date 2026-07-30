@@ -6,6 +6,32 @@
 
 ---
 
+> ### Outbound agent port — Phase 2: the deterministic gating layer
+>
+> - **What changed:** Ported the nine source modules that decide _whether_ and _when_ an outbound touch may happen. Every one is pure logic or a single Firestore transaction — no integration keys, no LLM — so the whole layer is exhaustively testable and runs on a machine with nothing configured.
+>   - `utils/timezoneLookup.ts` + `utils/timezoneTables.ts` — US area-code/ZIP → IANA timezone and state. The 981-line source is split into generated data (332 area-code→timezone, 331 area-code→state, 52 state→timezone, 56 ZIP3 SCF ranges, 37 ZIP3 overrides) and the derivation logic, so the tables can be regenerated without re-reviewing the code.
+>   - `services/businessHours.ts` — the calls-only send window: **9:00–18:55** in the prospect's local zone, or the deliberately tighter **11:00–16:55 ET** cross-coast fallback when the zone is unknown, plus weekend/federal/state-holiday blocking. Also the schedulers `clampToBusinessHours`, `businessHoursStartAfter`, `businessHoursSlot` (deterministic, no RNG — which is what makes a paused campaign resumable to the same schedule) and `nextBusinessHoursStart`.
+>   - `services/scheduling.ts` — `computeExecuteAt` and the **≤1 pending proactive task per chat** invariant (`enforceSingleProactiveTask`, `hasPendingProactiveTask`, the three `deletePending*` sweeps), including the `perChannel` mode that lets a dual test chat hold one phone and one email touch.
+>   - `services/taskDispatch.ts` — the at-most-once dispatch guard: `claimTask` flips `executed = true` in a transaction **at dispatch**, before the 15–45s turn runs, which is what closes the duplicate-call/email/review storm the source calls the "@AI-trigger storm".
+>   - `services/rateLimit.ts` — the Firestore fixed-window token bucket, plus `secondsUntilReset`, which exists to fix a real starvation bug: a bucket-deferred email that merely "retries soon" lands back in the still-full window and most of a campaign's email never sends.
+>   - `services/dncAreaCodes.ts` — the FTC SAN area-code registry: validation, expiry normalization, batched upsert, and the `effectiveAllowed`/`phonePasses` gate.
+>   - `services/skillsResolver.ts` — stage → system prompt + tool set, narrowed to `outbound`/`both` skills, including the outbound-only base-prompt **wipe** (and therefore `restoreWipedInjections`) and the exclusion of `voice_skill` entries from the text prompt.
+>   - `services/emailFormat.ts` — the dependency-free Markdown → `multipart/alternative` renderer. The `*` in its trailing-punctuation set is load-bearing: without it Gmail's auto-linker swallows a trailing `**` into the href and corrupts every bold link.
+>   - `services/callScope.ts` — **partial by design**: only `buildPhoneConsentAskLine`, the deterministic TCPA/PEWC consent-ask cadence (hard ≤2 asks, skipped entirely for `business_only` campaigns, and the counter bumps only when the disclosure actually went out so a failed send does not consume an ask). The rest of `call_scope.py` is voice-prompt assembly and lands with Phase 6.
+> - **Why:** These modules are what the campaign, email, and voice phases all call before doing anything irreversible, so they have to exist first — and they are the layer where a subtle port error is most expensive, since a wrong answer is a call placed at 6am, a prospect called twice, or a consent disclosure that never went out. Each module's **fail direction** is preserved verbatim from the source and documented in its docstring, because the two directions are deliberately opposite and a later "consistency" cleanup would silently break one of them: `claimTask` fails **closed** (skipping a tick is cheap, a duplicate call is not), `rateLimit.tryConsume` fails **open** (a limiter fault must never stop sending), the business-hours guard fails **open** except that an unknown timezone _tightens_ the window, and `hasPendingProactiveTask` fails **closed** because its caller reads `false` as "cadence stalled, schedule another touch".
+> - **Files:**
+>   - `outbound/services/{businessHours,scheduling,taskDispatch,rateLimit,dncAreaCodes,skillsResolver,emailFormat,callScope}.ts`
+>   - `outbound/utils/{timezoneLookup,timezoneTables}.ts`
+>   - `outbound/testSupport/fixtures/zip3FromPythonSource.json`
+>   - `outbound/testSupport/mockFirestore.ts`
+>   - `outbound/__tests__/services/{businessHours,guards,compliance}.test.ts`
+>   - `outbound/__tests__/utils/timezoneLookup.test.ts`
+> - **Deliberate divergence from the source:** holiday detection uses `date-holidays`, not the Python `holidays` package. The fail-open contract and the federal/state split are preserved, but exact date parity between the two libraries is not guaranteed and is not asserted.
+> - **Verification:** 356 tests across 10 suites, `tsc --noEmit` clean. The ZIP3 derivations are checked against a fixture captured from the Python source's actual output rather than re-derived in the test, so a transcription error in the tables cannot pass by matching a bug in both places.
+> - **Note:** Adding these suites surfaced a gap in the Phase 1 Firestore double — `collection().listDocuments()` was not implemented, so `upsertAreaCodes`' existing-ID scan hit its `catch` and restamped `created_at` on every write. Because that scan is deliberately fail-soft, the mock's silence looked like passing code; the double now implements it.
+
+---
+
 > ### Outbound agent port — Phase 1: the data-access layer
 >
 > - **What changed:** Replaced all 128 `inbound_agent` imports the source relied on with five native modules under `outbound/firebase/`, plus an in-memory Firestore double for the test suites.
