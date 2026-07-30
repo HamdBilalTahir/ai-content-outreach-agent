@@ -2,6 +2,30 @@
 
 ---
 
+### ✨ Features
+
+---
+
+> ### Outbound agent port — Phase 0: scaffolding, config, and Firestore seam
+>
+> - **What changed:** First phase of porting `ai-sales-backend/outbound_agent` (a 26,571-line Django app) to TypeScript under a new top-level `outbound/` directory. This phase lands the foundation only:
+>   - `outbound/config.ts` — one module replacing the source's two config sources (Django `settings.*` and scattered `os.getenv`). Every value is read lazily inside a function so tests can set `process.env` directly, and the source's **two opposite boolean conventions are preserved as separate functions**: `flagDefaultOn` (kill-switches — `getenv(X, "1")` off only for `0/false/off/no`, so any unexpected value stays ON) and `flagDefaultOff` (explicit opt-ins — ON only for the literal `"true"`). Integration credentials go through `requireEnv`, which throws `OutboundIntegrationNotConfigured` naming every missing key at once.
+>   - `outbound/types.ts` — the Firestore document shapes (`ChatDoc`, `ChatMemory`, `TaskDoc`, `CampaignDoc`), the Bedrock Converse wire format, tool-result statuses, and the `messages_v3`/`activities`/`notifications` card types. Field names are snake_case verbatim (`execute_at`, `phone_opt_out`, `outreach_lane`) because they are the stored data contract.
+>   - `outbound/firebase/db.ts` — the single Firestore seam (all outbound modules import `db` from here, so tests mock one place), plus `toDate` for the three shapes a stored datetime can arrive in, `getAllChunked` (the batched parent-doc read the source needed to stop blowing the gRPC stream deadline), and `runWithConcurrency` standing in for `ThreadPoolExecutor`.
+>   - Dependencies for the later phases, all inert until configured: `luxon` + `@types/luxon` and `date-holidays` (replacing `pytz`/`holidays`), `@anthropic-ai/sdk`, `groq-sdk`, `@aws-sdk/client-bedrock-runtime`, `twilio`, `@sendgrid/mail`, `@hubspot/api-client`.
+>   - ~90 commented env placeholders in `.env_example` covering LLM providers, voice, email, CRM, compliance providers, and every `OUTBOUND_*` tunable.
+> - **Why:** The flow being replicated (campaign enrollment → paced cadence → LLM turns that call/email prospects → transcript review → CRM sync) is not self-contained in the source: it imports 128 distinct `inbound_agent` modules. Establishing the config, type, and Firestore seams first is what lets the remaining phases port module-for-module without each one re-deciding how it reaches the database or reads a flag. The whole thing must load and run its deterministic gating on a machine with no integration keys set, which is why nothing throws at import.
+> - **Files:**
+>   - `outbound/config.ts`
+>   - `outbound/types.ts`
+>   - `outbound/firebase/db.ts`
+>   - `outbound/__tests__/config.test.ts`
+>   - `.env_example`
+>   - `package.json`
+> - **Note:** Outbound is server code, so its Jest suites declare `@jest-environment node`. That pragma only works from the **leading** docblock — an earlier revision put an `eslint-disable` comment above it, which silently dropped the file back to the project's jsdom default (verified: `typeof window` was `object`). The disable comment now sits below the docblock.
+
+---
+
 ### 🐛 Fixes
 
 ---
