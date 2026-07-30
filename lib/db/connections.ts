@@ -67,10 +67,24 @@ export async function getPrimaryConnection(
   }
 }
 
-export async function disconnectConnection(instanceId: string): Promise<void> {
+export async function disconnectConnection(docId: string): Promise<void> {
   try {
-    const docRef = db.collection(COLLECTION).doc(instanceId);
-    const doc = await docRef.get();
+    let docRef = db.collection(COLLECTION).doc(docId);
+    let doc = await docRef.get();
+
+    // Fallback: if not found by doc ID, search by instanceId field
+    if (!doc.exists) {
+      const snapshot = await db
+        .collection(COLLECTION)
+        .where('instanceId', '==', docId)
+        .limit(1)
+        .get();
+      if (!snapshot.empty) {
+        docRef = snapshot.docs[0].ref;
+        doc = snapshot.docs[0];
+      }
+    }
+
     if (doc.exists) {
       await docRef.update({
         status: 'disconnected',

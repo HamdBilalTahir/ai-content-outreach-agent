@@ -6,8 +6,6 @@ import { updateCrawlSession } from '../../../../../lib/db/crawlSessions';
 import { getSettings } from '../../../../../lib/db/settings';
 import { getAuthenticatedUserId } from '../../../../../lib/utils/auth';
 
-const MAX_CONCURRENCY = 5;
-
 async function runWithConcurrencyLimit<T>(
   tasks: (() => Promise<T>)[],
   limit: number

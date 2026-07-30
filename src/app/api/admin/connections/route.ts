@@ -44,16 +44,21 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const accounts = await getConnectedAccounts(userId);
-    for (const acc of accounts) {
-      await deleteUnipileAccount(acc.accountId);
+    try {
+      const accounts = await getConnectedAccounts(userId);
+      for (const acc of accounts) {
+        await deleteUnipileAccount(acc.accountId);
+      }
+    } catch (unipileError) {
+      console.warn(
+        'Could not fetch or delete Unipile accounts during disconnect:',
+        unipileError
+      );
     }
 
     const connections = await getConnections(userId);
     for (const conn of connections) {
-      if (conn.instanceId) {
-        await disconnectConnection(conn.instanceId);
-      }
+      await disconnectConnection(conn.id);
     }
 
     return NextResponse.json({ success: true });

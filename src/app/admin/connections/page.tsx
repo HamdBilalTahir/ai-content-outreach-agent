@@ -1,6 +1,8 @@
 import {
   getPrimaryConnection,
   createOrUpdateConnection,
+  getConnections,
+  disconnectConnection,
 } from '../../../../lib/db/connections';
 import ConnectManager from './ConnectManager';
 import { getAuthenticatedUserId } from '../../../../lib/utils/auth';
@@ -24,13 +26,6 @@ export default async function ConnectPage({
     redirect('/login');
   }
 
-  let accounts: any[] = [];
-  try {
-    accounts = await getConnectedAccounts(userId);
-  } catch (error) {
-    console.error('Failed to fetch Unipile accounts:', error);
-  }
-
   const resolvedSearchParams = await searchParams;
 
   // If success=true, ensure the latest account is stored in the connections DB
@@ -49,7 +44,36 @@ export default async function ConnectPage({
     });
     // Redirect to clear the searchParams
     redirect('/admin/connections');
-  } else if (resolvedSearchParams?.success === 'true' && accounts.length > 0) {
+  }
+
+  // Fetch the primary connection first — Unipile errors are only relevant if
+  // the DB already has a connected account.
+  const connection = await getPrimaryConnection(userId);
+
+  let accounts: any[] = [];
+  let fetchError = null;
+
+  if (connection?.status === 'connected') {
+    try {
+      accounts = await getConnectedAccounts(userId);
+    } catch (error: any) {
+      console.warn('Failed to fetch Unipile accounts:', error);
+      fetchError = error.message || 'Failed to fetch Unipile accounts';
+
+      try {
+        const userConns = await getConnections(userId);
+        for (const conn of userConns) {
+          if (conn.status === 'connected') {
+            await disconnectConnection(conn.id);
+          }
+        }
+      } catch (dbError) {
+        console.error('Failed to clean up stale DB connections:', dbError);
+      }
+    }
+  }
+
+  if (resolvedSearchParams?.success === 'true' && accounts.length > 0) {
     const latestAccount = accounts[0];
     await createOrUpdateConnection(userId, {
       provider: 'whatsapp',
@@ -65,8 +89,12 @@ export default async function ConnectPage({
     redirect('/admin/connections');
   }
 
-  // Fetch the primary connection
-  const connection = await getPrimaryConnection(userId);
+  // Detect credentials mismatch: DB says connected but that instanceId isn't in Unipile anymore
+  const credentialsMismatch =
+    !fetchError &&
+    connection?.status === 'connected' &&
+    connection.instanceId != null &&
+    !accounts.some((a) => a.accountId === connection.instanceId);
 
   const serializedConnection = connection
     ? {
@@ -80,6 +108,8 @@ export default async function ConnectPage({
     <ConnectManager
       accounts={accounts}
       initialConnection={serializedConnection}
+      fetchError={fetchError}
+      credentialsMismatch={credentialsMismatch}
     />
   );
 }

@@ -111,7 +111,17 @@ export async function runBatchLearnerAgent(
     .map((l: any) => l.sandboxRejectionReason)
     .filter(Boolean);
 
-  const routerPrompt = `Analyze the following batch feedback from a human Overseer:
+  const { getPipelineById } = await import('../db/pipelines');
+  const pipeline = await getPipelineById(userId, pipelineId);
+  const pipelineGoal =
+    pipeline?.description || 'Discover qualified brand leads.';
+
+  const routerPrompt = `You are improving an outreach pipeline with this goal / Ideal Customer Profile:
+"""
+${pipelineGoal}
+"""
+
+Analyze the following batch feedback from a human Overseer:
 
 Approved Leads: ${approvedLeads.length}
 Rejected Leads with reasons:
@@ -230,6 +240,9 @@ You must output a structured JSON identifying the agent role, your reasoning for
 
     const prompt = `You are the Update Intelligence Node. Your task is to update the **${role}**'s intelligence markdown playbook.
 
+## Pipeline Goal / Ideal Customer Profile:
+${pipelineGoal}
+
 ## Current Playbook:
 ${currentPlaybook}
 
@@ -239,7 +252,7 @@ ${updateTask.reasoning}
 ## Instructions for Change:
 ${updateTask.dataToChange}
 
-Analyze the reasoning and instructions, and rewrite the Current Playbook Markdown to integrate these new intelligence updates. Ensure new rules are clearly added to "Rules" or "Blacklist" sections.
+Analyze the reasoning and instructions, and rewrite the Current Playbook Markdown to integrate these new intelligence updates. Keep the rules aligned with the Pipeline Goal / Ideal Customer Profile above. Ensure new rules are clearly added to "Rules" or "Blacklist" sections.
 
 Respond ONLY with the updated raw Markdown for the playbook. Do not wrap it in \`\`\`markdown backticks, just return the text itself.`;
 
@@ -327,7 +340,17 @@ export async function runLearnerAgent(
     );
   }
 
-  const routerPrompt = `Analyze the following continuous feedback from a human Overseer regarding a specific lead:
+  const { getPipelineById } = await import('../db/pipelines');
+  const pipeline = await getPipelineById(userId, pipelineId);
+  const pipelineGoal =
+    pipeline?.description || 'Discover qualified brand leads.';
+
+  const routerPrompt = `You are improving an outreach pipeline with this goal / Ideal Customer Profile:
+"""
+${pipelineGoal}
+"""
+
+Analyze the following continuous feedback from a human Overseer regarding a specific lead:
 
 Outcome: ${signal.outcome}
 Pitch Angle Used: ${signal.pitchAngleUsed}
@@ -440,6 +463,9 @@ You must output a structured JSON identifying the agent role, your reasoning for
 
     const prompt = `You are the Update Intelligence Node. Your task is to update the **${role}**'s intelligence markdown playbook based on a recent human feedback signal.
 
+## Pipeline Goal / Ideal Customer Profile:
+${pipelineGoal}
+
 ## Current Playbook:
 ${currentPlaybook}
 
@@ -449,7 +475,7 @@ ${updateTask.reasoning}
 ## Instructions for Change:
 ${updateTask.dataToChange}
 
-Analyze the reasoning and instructions, and rewrite the Current Playbook Markdown to integrate these new intelligence updates. Ensure new rules are clearly added to "Rules" or "Blacklist" sections. If the outcome is positive ("Closed"), reinforce the successful patterns.
+Analyze the reasoning and instructions, and rewrite the Current Playbook Markdown to integrate these new intelligence updates. Keep the rules aligned with the Pipeline Goal / Ideal Customer Profile above. Ensure new rules are clearly added to "Rules" or "Blacklist" sections. If the outcome is positive ("Closed"), reinforce the successful patterns.
 
 Respond ONLY with the updated raw Markdown for the playbook. Do not wrap it in \`\`\`markdown backticks, just return the text itself.`;
 

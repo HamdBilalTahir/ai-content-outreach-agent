@@ -2,6 +2,7 @@ import { getAuthenticatedUserId } from '../../../../lib/utils/auth';
 import { redirect } from 'next/navigation';
 import { getAllIntelligenceForPipeline } from '../../../../lib/db/intelligence';
 import { getPlaybook } from '../../../../lib/services/blobStorage';
+import { getPipelineById } from '../../../../lib/db/pipelines';
 import PlaybookViewer from './PlaybookViewer';
 
 export default async function IntelligenceHubPage() {
@@ -15,13 +16,14 @@ export default async function IntelligenceHubPage() {
   const pipelineId = 'default-pipeline';
 
   const registries = await getAllIntelligenceForPipeline(userId, pipelineId);
+  const pipeline = await getPipelineById(userId, pipelineId);
 
   // Pre-fetch all playbooks
   const playbooks: Record<string, string> = {};
   for (const reg of registries) {
     try {
       playbooks[reg.agentRole] = await getPlaybook(reg.blobUrl);
-    } catch (e) {
+    } catch {
       playbooks[reg.agentRole] = '# Error loading playbook';
     }
   }
@@ -53,6 +55,17 @@ export default async function IntelligenceHubPage() {
           during its next run.
         </p>
       </div>
+
+      {pipeline?.description && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div className="text-sm font-semibold text-gray-800">
+            Pipeline Goal / Ideal Customer Profile
+          </div>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">
+            {pipeline.description}
+          </p>
+        </div>
+      )}
 
       <PlaybookViewer playbooks={playbooks} />
     </div>

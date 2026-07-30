@@ -42,13 +42,15 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id, status, connectionId, settings } = await req.json();
+    const { id, description, status, connectionId, settings } =
+      await req.json();
 
     if (!id) {
       return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
     }
 
     await updatePipeline(userId, id, {
+      description,
       status,
       connectionId,
       settings,

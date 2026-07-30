@@ -1,4 +1,190 @@
+## 🗓️ **2026-07-30**
+
+---
+
+### 🐛 Fixes
+
+---
+
+> ### Restore `dotenv` as a direct devDependency to unblock `tsc --noEmit`
+>
+> - **What changed:** Added `dotenv` to `devDependencies` and resynced `yarn.lock` with `package.json` (a `yarn install` pruned the stale `@browserbasehq/stagehand` / `@anthropic-ai/sdk` / `@ibm-cloud/watsonx-ai` trees that the lockfile still pinned, plus added the platform-specific `sharp` binaries for this machine).
+> - **Why:** `dotenv` was only ever present transitively via `@browserbasehq/stagehand`. Once the lockfile was resynced and that tree pruned, the tracked `test-unipile.ts` script — which does `import dotenv from 'dotenv'` — failed typecheck with `TS2307: Cannot find module 'dotenv'`, and the husky pre-commit hook blocked every commit. Declaring it directly makes the dependency explicit rather than incidental.
+> - **Files:**
+>   - `package.json`
+>   - `yarn.lock`
+
+---
+
+> ### Turn off core `no-undef` for TS/JS files and drop an unused catch binding
+>
+> - **What changed:** Added `"no-undef": "off"` to the TypeScript block in `eslint.config.mjs` (mirroring the existing `no-unused-vars` → `@typescript-eslint/no-unused-vars` handoff), and changed the playbook-fetch `catch (e)` in the Intelligence Hub page to a bare `catch`.
+> - **Why:** `js.configs.recommended` enables `no-undef`, which flagged `React.ReactNode` / `React.ChangeEvent` / `React.FormEvent` in `AuthProvider`, `SettingsManager`, and the login page as undefined — false positives, since those are type-only references to the React UMD namespace that TypeScript resolves and ESLint's scope analysis cannot. typescript-eslint recommends disabling the core rule for TS for exactly this reason; `tsc --noEmit` already catches genuinely undefined identifiers. Together with the unused `e`, these four errors were failing the `lint-staged` pre-commit hook on the files in this batch.
+> - **Files:**
+>   - `eslint.config.mjs`
+>   - `src/app/admin/intelligence/page.tsx`
+
+---
+
+## 🗓️ **2026-06-17**
+
+---
+
+### ✨ Features
+
+---
+
+> ### Pipeline Search Instructions / ICP threaded through search, qualification, and learning
+>
+> - **What changed:** Added a "Search Instructions / Ideal Customer Profile" textarea to both the **create** and **edit** pipeline forms (saved to `pipeline.description`), wired through the POST and PATCH `/api/admin/pipelines` handlers. The pipeline `description` now flows into three more places beyond niche discovery: (1) the **lead qualification** prompt — `generatePitchNode` fetches the pipeline and passes `icp` into `generatePitch`, which injects an "Ideal Customer Profile" block into the Gemini system prompt so each lead is judged against the ICP; (2) the **learner agent** — both `runLearnerAgent` and `runBatchLearnerAgent` fetch the pipeline goal and inject it into their router and playbook-update prompts so learned rules stay aligned with the ICP; (3) the **Intelligence Hub** page and the **pipeline cards**, which now display the saved ICP. Also relabeled the card's "Control Room →" link to "Edit / Control Room →".
+> - **Why:** The pipeline `description` was previously only consumed by `crawlStrategyAgent` (niche/search generation). Surfacing it as an explicit ICP field and threading it through qualification and learning lets a single instruction block steer the whole pipeline.
+> - **Files:**
+>   - `src/app/admin/pipelines/PipelinesManager.tsx`
+>   - `src/app/api/admin/pipelines/route.ts`
+>   - `lib/services/geminiPitchGenerator.ts`
+>   - `lib/pipeline/runPipeline.ts`
+>   - `lib/agents/learnerAgent.ts`
+>   - `src/app/admin/intelligence/page.tsx`
+
+---
+
+> ### Prioritize location, customer type, and demographics in crawl strategy generation
+>
+> - **What changed:** Added a "TARGETING PRIORITY" step 0 to the `crawlStrategyAgent` prompt instructing the model to first extract, in strict order of importance, (a) location/geography, (b) customer types/personas, and (c) demographics & firmographics from the pipeline goal — inferring a reasonable value when the goal omits one. Steps 1–3 were rewritten to consume those filters: every synthesized niche must reflect them, every `tavilyQuery` must combine customer type/demographic with the target location (`"<customer type> in <location>"`), `firecrawlMaps` should prefer location-specific directories, and each `marketHypothesis`/`confidenceScore` must explicitly reference them. Also changed the Tavily market-trends query from `market trends <goal> high margin industries <seedUrls>` to `target customer segments, demographics and locations with highest buying intent for: <goal> <seedUrls>`.
+> - **Why:** The agent was generating niches from broad market-trend signals, so geographically-scoped pipeline goals produced global queries and off-region leads. Location is the strongest disqualifier for a lead, so it now gates niche selection and every generated query instead of being one signal among many. The Tavily query was retuned to surface buyer segments rather than high-margin industries so the search results feed the same targeting decision.
+> - **Files:**
+>   - `lib/agents/crawlStrategyAgent.ts`
+
+---
+
+> ### Add "Use environment variables" toggle for global API keys
+>
+> - **What changed:** Added a `useEnvKeys` boolean to `SystemSettings` and a checkbox in the Settings → Global Integrations section. When checked, the four API-key inputs (OpenAI, Gemini, Firecrawl/Apify, Unipile) are disabled and dimmed with a "Using env variable" placeholder. The flag persists via the existing settings PATCH route (which spreads the body), so no route change was needed.
+> - **Why:** To make explicit that the server's environment variables are the key source. Note: the backend services already read `process.env.*` directly and never consumed `settings.apiKeys`, so this toggle currently documents/locks the intended behavior rather than switching a live code path.
+> - **Files:**
+>   - `lib/types/index.ts`
+>   - `src/app/admin/settings/SettingsManager.tsx`
+
+---
+
+> ### Add Google sign-in to the login page
+>
+> - **What changed:** Added a "Continue with Google" button to the login page using Firebase's `GoogleAuthProvider` and `signInWithPopup`, with an "or" divider separating it from the existing email/password and magic-link forms. The `handleGoogleSignIn` handler intentionally does **not** call `router.push('/admin')` after the popup resolves — navigation, profile creation, and the `auth_token` cookie are all handled by the existing `AuthProvider` `onAuthStateChanged` listener.
+> - **Why:** To give users a one-click sign-in option alongside the existing email/password, sign-up, and magic-link flows. Navigating from the handler raced ahead of `AuthProvider` setting the `auth_token` cookie, so the server-component `/admin` guard (`getAuthenticatedUserId()` → `redirect('/login')`) saw no cookie and bounced the user back to `/login`. Letting `AuthProvider` set the cookie and then redirect removes the race. (An interim `signInWithRedirect` attempt was reverted: it fails to persist on `localhost` with the default `*.firebaseapp.com` authDomain due to Chrome's third-party storage partitioning.)
+> - **Files:**
+>   - `src/app/login/page.tsx`
+> - **Note:** Requires enabling the Google provider in the Firebase Console (Authentication → Sign-in method) for the `ai-content-outreach-agent` project; otherwise sign-in returns `auth/operation-not-allowed`.
+
+---
+
+### 🐛 Fixes
+
+---
+
+> ### Fix "Rendered more hooks than during the previous render" on magic-link login
+>
+> - **What changed:** Changed `AuthProvider` to render its route subtree unconditionally (`{children}`) instead of gating it behind the client-only `loading` flag (`{!loading && children}`).
+> - **Why:** Magic links point to `origin + '/admin'`, so clicking one lands on `/admin?oobCode=…`. There, `loading` flipped `true → false` mid-navigation, toggling whether the gated route subtree rendered and producing React's "Rendered more hooks than during the previous render" runtime error on first load. Rendering `children` unconditionally keeps the tree consistent across server render, hydration, and the auth-state transition. Protected pages remain safe because they already enforce auth server-side via `getAuthenticatedUserId()` → `redirect('/login')`, and pages now server-render properly instead of being client-only.
+> - **Files:**
+>   - `src/app/AuthProvider.tsx`
+
+---
+
 ## 🗓️ **2026-05-03**
+
+---
+
+### 🐛 Fixes
+
+---
+
+> ### Fix Unipile DSN parsing not matching numbered subdomains + plain base URL support
+>
+> - **What changed:** Broadened the DSN check in `getUnipileConfig` from `dsn.includes('api.unipile.com')` to `dsn.includes('.unipile.com')` so numbered subdomains like `api29.unipile.com` are handled. Added logic to distinguish a plain base URL (3 colon-segments, e.g. `https://api29.unipile.com:15975/`) from an embedded-token DSN (4+ segments, e.g. `https://api29.unipile.com:15975:TOKEN`) — plain base URLs now use it as `UNIPILE_BASE_URL` and fall back to `UNIPILE_TOKEN` for the key. Also added trailing-slash stripping so `https://api29.unipile.com:15975/` resolves cleanly. Corrected `UNIPILE_BASE_URL` in `.env` to use the full `https://` URL with trailing slash, and fixed a stray `m` prefix in `UNIPILE_TOKEN`.
+> - **Why:** The too-narrow `api.unipile.com` check caused DSN parsing to be silently skipped for `api29`-style instances, leaving `baseUrl` unset and causing connection timeouts or config errors. The token typo (`muzzlbHfz` vs `uzzlbHfz`) was causing 401s independently.
+> - **Files:**
+>   - `lib/services/unipile.ts`
+>   - `.env`
+
+---
+
+> ### Fix Unipile 401 caused by DSN token not being parsed in all functions
+>
+> - **What changed:** Extracted a shared `getUnipileConfig()` helper in `unipile.ts` that parses both plain token and DSN formats (`https://api.unipile.com:PORT:TOKEN`). All four functions — `createUnipileHostedAuthLink`, `getConnectedAccounts`, `deleteUnipileAccount`, and `sendWhatsappMessage` — now use it. Previously only `sendWhatsappMessage` did the DSN parsing; the other three sent the full DSN string as the `X-API-KEY` header, causing a 401 "Missing credentials" from Unipile.
+> - **Why:** When `UNIPILE_TOKEN` is set to a DSN string, `createUnipileHostedAuthLink` was forwarding the entire DSN as the API key rather than extracting the token segment, producing a 401 on every connect-link generation attempt.
+> - **Files:**
+>   - `lib/services/unipile.ts`
+
+---
+
+> ### Fix `disconnectConnection` silently failing due to wrong Firestore doc ID
+>
+> - **What changed:** `disconnectConnection` now tries to find the document by the passed ID first, then falls back to querying `where('instanceId', '==', docId)` if nothing is found. All callers updated to pass `conn.id` (the actual Firestore doc ID) instead of `conn.instanceId`. Added credentials-mismatch detection in `ConnectPage`: when Unipile loads successfully but the stored `instanceId` isn't in the returned accounts, a `credentialsMismatch` flag is passed to `ConnectManager` which renders an amber warning banner prompting the user to disconnect and reconnect.
+> - **Why:** The `connections` document in Firestore uses the userId as its doc ID (not the Unipile `instanceId`). Calling `db.collection('connections').doc(instanceId)` resolved to a non-existent path, so `doc.exists` was always false and the status update was a silent no-op — the DB was never marked `disconnected` on disconnect. The credentials-mismatch detection covers the case where Unipile API succeeds but with new credentials that don't have the previously connected account.
+> - **Files:**
+>   - `lib/db/connections.ts`
+>   - `src/app/api/admin/connections/route.ts`
+>   - `src/app/admin/connections/page.tsx`
+>   - `src/app/admin/connections/ConnectManager.tsx`
+
+---
+
+> ### Gracefully handle Unipile API errors during fetch and disconnect
+>
+> - **What changed:** Updated `getConnectedAccounts` to throw errors and log via `console.warn` on failure instead of returning an empty array, and updated the UI (`ConnectManager` and `ConnectPage`) to display the error. Added logic to `ConnectPage` to automatically soft-delete (status: 'disconnected') active connections in the DB when API credentials change or fail (e.g. 401). Updated the DELETE connection endpoint to catch Unipile API errors and proceed with DB soft-deletion regardless. Finally, changed `ConnectManager` to correctly fallback to the empty input state if the connection object status reads 'disconnected'.
+> - **Why:** When the Unipile API goes down or credentials are bad, it previously caused a hard server crash and aggressive `console.error` logs during account rendering, and prevented users from removing broken DB connections. The automatic DB cleanup keeps state synced when API keys rotate, while preserving historical connection data via soft-deletes. Furthermore, the UI previously got stuck rendering an empty "Active Connection" card for soft-deleted documents, blocking reconnection attempts.
+> - **Files:**
+>   - `lib/services/unipile.ts`
+>   - `src/app/admin/connections/page.tsx`
+>   - `src/app/admin/connections/ConnectManager.tsx`
+>   - `src/app/api/admin/connections/route.ts`
+
+---
+
+### 📚 Docs
+
+---
+
+> ### Full Architecture & README Rewrite with DB Schema
+>
+> - **What changed:** Rewrote `Architecture.md` with a complete Database Schema & Relationships section covering all 12 Firestore collections (field names, types, FK annotations, and a full relationship map). Fixed the stale sandbox path description (old `pipelines/{pipelineId}/sandbox_runs/...` → correct `leads/sandbox_{pipelineId}_{runId}/items/`), added the `NicheHealthEvaluator` agent, Tavily to the integrations table, and all missing `lib/db/` modules to the project structure. Updated `README.md` to fix incorrect env var names (`APIFY_TOKEN`, `UNIPILE_TOKEN`, `UNIPILE_BASE_URL`), add the Niche Health Monitoring feature, Tavily to the stack, and the `Number Invalid` dispatch behavior.
+> - **Why:** Documentation was missing the full DB schema, had a stale sandbox storage path, incorrect env var names, and was missing agents and integrations added since the initial write.
+> - **Files:**
+>   - `Architecture.md`
+>   - `README.md`
+
+---
+
+### 🧹 Refactors
+
+---
+
+> ### Remove unused `getConnectedAccounts` import
+>
+> - **What changed:** Removed the unused `getConnectedAccounts` named import from `whatsappDispatcher.ts`.
+> - **Why:** Eliminated an ESLint `no-unused-vars` error; the function was imported but never called in this file.
+> - **Files:**
+>   - `lib/services/whatsappDispatcher.ts`
+
+---
+
+> ### Clear remaining ESLint errors in the scraper, crawl route, and strategy agent
+>
+> - **What changed:** In `websiteScraper.ts`, added a file-level `/* eslint-disable no-useless-escape */` (the phone/handle regexes need the escapes) and gave the five bare `catch {}` blocks a `//` body to satisfy `no-empty`. Removed the unused `MAX_CONCURRENCY` constant from the `run-crawl` route (the limit is passed in per call). Added an `eslint-disable-next-line @typescript-eslint/no-unused-vars` above the playbook-fetch `catch (e)` in `crawlStrategyAgent.ts`, where the error is intentionally not logged.
+> - **Why:** To clear the lint failures in the files touched by the Unipile/connections work so `yarn lint` no longer flags them. All are no-op suppressions or dead-code removals — no behavior changed. (Unrelated `no-undef` / `no-unused-vars` errors remain elsewhere in the repo and were left alone.)
+> - **Files:**
+>   - `lib/services/websiteScraper.ts`
+>   - `src/app/api/admin/run-crawl/route.ts`
+>   - `lib/agents/crawlStrategyAgent.ts`
+
+---
+
+> ### Update Unipile credentials in `.env_example`
+>
+> - **What changed:** Replaced the `UNIPILE_TOKEN` / `UNIPILE_BASE_URL` example values with the current `api29` instance (`https://api29.unipile.com:15975/`, full scheme + trailing slash) and commented out the previous `api41` pair for reference.
+> - **Why:** To keep the example file aligned with the working configuration after the Unipile instance change, and to document the full-URL form that the broadened DSN parser expects.
+> - **Files:**
+>   - `.env_example`
 
 ---
 

@@ -140,9 +140,15 @@ ${feedbackSummary}${strategistPlaybook}
 ## Instructions
 Analyze the pipeline goal, client seed URLs, search trends, existing niches, and feedback data (and strictly adhere to any rules in the Strategist Playbook).
 
-1. Evaluate the search results to synthesize 2-3 high-confidence niches to target concurrently based on market trends.
-2. For each selected niche, provide a hybrid discovery plan using both 'tavilyQueries' (semantic web searches for independent domains) and 'firecrawlMaps' (specific aggregator or directory URLs to map). Also list content/product signals that indicate a high-quality lead.
-3. Formulate a specific 'marketHypothesis' and 'confidenceScore' for EACH niche in the array.
+0. TARGETING PRIORITY — From the Overall Pipeline Goal above, first extract the highest-priority targeting filters in this exact order of importance:
+   a. LOCATION / GEOGRAPHY (countries, regions, cities, or service areas the buyer must be in). This is the strongest filter — if a location is stated, EVERY query and map you generate must be geographically scoped to it.
+   b. CUSTOMER TYPES (the specific buyer segments/personas the goal calls out, e.g. property developers, facility managers, contractors, homeowners). Rank them by the priority the goal implies and target the highest-value types first.
+   c. DEMOGRAPHICS & FIRMOGRAPHICS (business size, industry vertical, budget level, decision-maker role, and any other qualifying traits described).
+   If the goal does not state one of these, infer the most reasonable value from context rather than ignoring it.
+
+1. Evaluate the search results to synthesize 2-3 high-confidence niches to target concurrently. Each niche MUST reflect the location, customer type, and demographics extracted in step 0.
+2. For each selected niche, provide a hybrid discovery plan using both 'tavilyQueries' (semantic web searches for independent domains) and 'firecrawlMaps' (specific aggregator or directory URLs to map). EVERY 'tavilyQuery' must combine the customer type/demographic with the target location (e.g. "<customer type> in <location>"), and 'firecrawlMaps' should prefer location-specific directories/aggregators. Also list content/product signals that indicate a high-quality lead matching the demographics.
+3. Formulate a specific 'marketHypothesis' and 'confidenceScore' for EACH niche, explicitly referencing the prioritized location, customer type, and demographics.
 
 Respond ONLY with a valid JSON object — no markdown, no explanation outside the JSON:
 {
@@ -186,6 +192,7 @@ export async function runCrawlStrategyAgent(
   for (const reg of registries) {
     try {
       playbooks[reg.agentRole] = await getPlaybook(reg.blobUrl);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
       console.warn(`Failed to fetch playbook for ${reg.agentRole}`);
     }
@@ -206,7 +213,7 @@ export async function runCrawlStrategyAgent(
     try {
       const { tavily } = await import('@tavily/core');
       const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
-      const query = `market trends ${pipelineGoal} high margin industries ${clientSeedUrls.join(' ')}`;
+      const query = `target customer segments, demographics and locations with highest buying intent for: ${pipelineGoal} ${clientSeedUrls.join(' ')}`;
       const searchRes = await tvly.search(query, {
         searchDepth: 'basic',
         maxResults: 3,

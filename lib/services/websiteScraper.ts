@@ -1,3 +1,4 @@
+/* eslint-disable no-useless-escape */
 import Firecrawl from '@mendable/firecrawl-js';
 import stringSimilarity from 'string-similarity';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
@@ -104,7 +105,9 @@ function getCountryCodeFromUrl(url: string): string | null {
       cl: 'CL',
     };
     if (tldMap[tld]) return tldMap[tld];
-  } catch {}
+  } catch {
+    //
+  }
   return null;
 }
 
@@ -173,7 +176,9 @@ async function extractWhatsApp(
       if (phones.length > 0 && phones[0].number?.number) {
         return phones[0].number.number.toString();
       }
-    } catch {}
+    } catch {
+      //
+    }
     const digits = telMatch[1].replace(/\D/g, '');
     if (digits.length >= 10) return normalizePhone(digits);
     // If libphonenumber fails and it's less than 10 digits, just return the raw phone number
@@ -189,7 +194,9 @@ async function extractWhatsApp(
         return text.substring(phone.startsAt, phone.endsAt);
       }
     }
-  } catch {}
+  } catch {
+    //
+  }
 
   return null;
 }
@@ -230,7 +237,9 @@ async function extractInstagram(
   let domain = '';
   try {
     domain = new URL(websiteUrl).hostname.replace(/^www\./, '').split('.')[0];
-  } catch {}
+  } catch {
+    //
+  }
 
   const targetString = brandName ? brandName.toLowerCase() : domain;
   if (!targetString) return `https://www.instagram.com/${uniqueHandles[0]}/`;
@@ -350,7 +359,9 @@ export async function scrapeBrandWebsite(
       if (!targetUrl) {
         try {
           targetUrl = new URL('/contact', websiteUrl).href;
-        } catch {}
+        } catch {
+          //
+        }
       }
 
       if (targetUrl) {

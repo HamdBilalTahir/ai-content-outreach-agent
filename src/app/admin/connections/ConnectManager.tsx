@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import type { Connection } from '../../../../lib/types';
 import type { UnipileAccount } from '../../../../lib/services/unipile';
 import { useRouter } from 'next/navigation';
 
@@ -12,9 +11,13 @@ import 'react-phone-number-input/style.css';
 export default function ConnectManager({
   initialConnection,
   accounts,
+  fetchError,
+  credentialsMismatch,
 }: {
   initialConnection: any;
   accounts: UnipileAccount[];
+  fetchError?: string | null;
+  credentialsMismatch?: boolean;
 }) {
   const router = useRouter();
   const [phoneValue, setPhoneValue] = useState<string | undefined>(
@@ -25,9 +28,14 @@ export default function ConnectManager({
       : undefined
   );
   const [isConnecting, setIsConnecting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState(fetchError || '');
 
   const isConnected = initialConnection?.status === 'connected';
+  const hasConnectedAccounts = accounts.some(
+    (acc) =>
+      acc.status.toLowerCase() === 'connected' ||
+      acc.status.toLowerCase() === 'ok'
+  );
 
   const handleConnect = async () => {
     if (!phoneValue) {
@@ -109,11 +117,19 @@ export default function ConnectManager({
           </div>
         )}
 
-        {isConnected || accounts.length > 0 ? (
+        {isConnected || hasConnectedAccounts ? (
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-gray-900">
               Connected Accounts
             </h2>
+
+            {credentialsMismatch && (
+              <div className="p-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md">
+                <strong>Credentials changed.</strong> The connected number is no
+                longer found in your Unipile account. Please disconnect and
+                reconnect with your new credentials.
+              </div>
+            )}
 
             {isConnected && (
               <div className="flex flex-col items-center justify-center space-y-4 py-6 border border-green-200 rounded-lg bg-green-50 mb-6">

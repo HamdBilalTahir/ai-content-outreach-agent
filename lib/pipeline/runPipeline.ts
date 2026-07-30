@@ -249,6 +249,9 @@ async function generatePitchNode(
   );
   await checkStatus(state);
 
+  const { getPipelineById } = await import('../db/pipelines');
+  const pipeline = await getPipelineById(state.userId, state.pipelineId);
+
   const aiEvaluation = await generatePitch({
     pageText: state.scrapedData?.pageText ?? null,
     sanitizedImages: state.sanitizedImages,
@@ -256,6 +259,7 @@ async function generatePitchNode(
     brandName: state.scrapedData?.brandName ?? null,
     productPrice: state.scrapedData?.productPrice ?? null,
     playbooks: (state as any).playbooks,
+    icp: pipeline?.description ?? null,
   });
 
   if (state.crawlSessionId && aiEvaluation) {

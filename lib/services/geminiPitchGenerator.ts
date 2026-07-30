@@ -68,6 +68,7 @@ export interface GeminiPitchInput {
   brandName: string | null;
   productPrice: number | null;
   playbooks?: Record<string, string>;
+  icp?: string | null;
 }
 
 async function fetchAndEncodeImage(url: string): Promise<string | null> {
@@ -129,6 +130,10 @@ export async function generatePitch(
   );
   try {
     let dynamicPrompt = SYSTEM_PROMPT;
+
+    if (input.icp) {
+      dynamicPrompt += `\n\n--- IDEAL CUSTOMER PROFILE (Pipeline Goal) ---\nEvaluate this brand against the target customer profile below. Use it to judge how well the brand fits and to tailor the pitch. If the brand clearly does not match this profile, call that out in your analystNarrative.\n${input.icp}\n`;
+    }
 
     if (input.playbooks) {
       const copywriterPb = input.playbooks['copywriter'];

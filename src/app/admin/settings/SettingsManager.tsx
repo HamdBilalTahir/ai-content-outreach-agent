@@ -158,7 +158,30 @@ export default function SettingsManager({
           <h2 className="text-sm font-semibold text-gray-900">
             Global Integrations (API Keys)
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="useEnvKeys"
+              name="useEnvKeys"
+              checked={settings.useEnvKeys || false}
+              onChange={handleChange}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+            />
+            <label
+              htmlFor="useEnvKeys"
+              className="ml-3 block text-sm leading-6 text-gray-900"
+            >
+              Use environment variables (ignore the keys entered below and use
+              the server&apos;s configured env vars)
+            </label>
+          </div>
+
+          <div
+            className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+              settings.useEnvKeys ? 'opacity-50' : ''
+            }`}
+          >
             <div>
               <label
                 htmlFor="openAi"
@@ -172,7 +195,9 @@ export default function SettingsManager({
                 id="openAi"
                 value={settings.apiKeys?.openAi || ''}
                 onChange={handleChange}
-                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+                disabled={settings.useEnvKeys || false}
+                placeholder={settings.useEnvKeys ? 'Using env variable' : ''}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -188,7 +213,9 @@ export default function SettingsManager({
                 id="gemini"
                 value={settings.apiKeys?.gemini || ''}
                 onChange={handleChange}
-                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+                disabled={settings.useEnvKeys || false}
+                placeholder={settings.useEnvKeys ? 'Using env variable' : ''}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -204,7 +231,9 @@ export default function SettingsManager({
                 id="firecrawl"
                 value={settings.apiKeys?.firecrawl || ''}
                 onChange={handleChange}
-                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+                disabled={settings.useEnvKeys || false}
+                placeholder={settings.useEnvKeys ? 'Using env variable' : ''}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -220,7 +249,9 @@ export default function SettingsManager({
                 id="unipile"
                 value={settings.apiKeys?.unipile || ''}
                 onChange={handleChange}
-                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3"
+                disabled={settings.useEnvKeys || false}
+                placeholder={settings.useEnvKeys ? 'Using env variable' : ''}
+                className="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 border px-3 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
           </div>

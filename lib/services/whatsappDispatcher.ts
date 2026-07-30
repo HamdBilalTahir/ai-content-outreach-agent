@@ -11,10 +11,7 @@ function randomDelay(minMs: number, maxMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-import {
-  sendWhatsappMessage as unipileSendMessage,
-  getConnectedAccounts,
-} from './unipile';
+import { sendWhatsappMessage as unipileSendMessage } from './unipile';
 
 import { getPrimaryConnection } from '../db/connections';
 

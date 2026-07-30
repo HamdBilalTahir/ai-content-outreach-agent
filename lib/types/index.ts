@@ -161,6 +161,9 @@ export interface SystemSettings {
   dispatchBatchSize: number;
   crawlScheduleHour: number; // 0-23 UTC
   dispatchScheduleHour: number; // 0-23 UTC
+  // When true, the server's environment variables are used for all
+  // integrations instead of the keys entered below.
+  useEnvKeys?: boolean;
   apiKeys?: {
     openAi?: string;
     gemini?: string;

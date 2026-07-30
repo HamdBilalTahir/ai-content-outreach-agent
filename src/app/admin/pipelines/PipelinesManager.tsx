@@ -12,11 +12,11 @@ export default function PipelinesManager({
   connections: Connection[];
 }) {
   const router = useRouter();
-  const [pipelines, setPipelines] = useState<Pipeline[]>(initialPipelines);
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'running' | 'paused' | 'stopped'>(
     'stopped'
   );
@@ -30,6 +30,7 @@ export default function PipelinesManager({
     setIsCreating(true);
     setEditingId(null);
     setName('');
+    setDescription('');
     setStatus('stopped');
     setConnectionId('');
     setOverrideGlobalDeduplication(false);
@@ -39,6 +40,7 @@ export default function PipelinesManager({
     setIsCreating(false);
     setEditingId(pipeline.id);
     setName(pipeline.name);
+    setDescription(pipeline.description || '');
     setStatus(pipeline.status);
     setConnectionId(pipeline.connectionId || '');
     setOverrideGlobalDeduplication(
@@ -58,7 +60,7 @@ export default function PipelinesManager({
         await fetch('/api/admin/pipelines', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, description }),
         });
       } else if (editingId) {
         await fetch('/api/admin/pipelines', {
@@ -66,6 +68,7 @@ export default function PipelinesManager({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: editingId,
+            description,
             status,
             connectionId: connectionId || null,
             settings: { overrideGlobalDeduplication },
@@ -119,6 +122,30 @@ export default function PipelinesManager({
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
                   placeholder="e.g. Roofing Campaign"
                 />
+
+                <label className="block text-sm font-medium text-gray-700 mt-4">
+                  Search Instructions / Ideal Customer Profile
+                </label>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Describe who you&apos;re targeting and the context the
+                  strategy engine should search for — buyer types, qualifying
+                  signals, disqualifiers, triggers, etc. This text drives the
+                  web searches used to discover niches and leads, so the more
+                  specific the better.
+                </p>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={12}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                  placeholder={
+                    'e.g. Ideal Customer Profile: Fencing Construction Services\n\n' +
+                    'Primary buyers: property developers and builders (perimeter fencing, hoarding, repeat volume), facility/property managers (schools, warehouses, compounds — security & compliance driven), contractors/subcontractors needing a dependable install partner, and homeowners/small landlords (privacy, security, replacing a broken fence).\n\n' +
+                    'Qualified signals: a defined site/property, rough linear footage needed, a trigger (new build, security incident, code requirement, damaged fence), budget authority, and a timeline.\n\n' +
+                    'Disqualifiers: no actual property, "just getting ideas", expectations far below realistic cost.\n\n' +
+                    'Track: fence type, material, scale (linear meters), application, trigger, timeline, decision-maker.'
+                  }
+                />
               </div>
             )}
 
@@ -159,6 +186,26 @@ export default function PipelinesManager({
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Search Instructions / Ideal Customer Profile
+                  </label>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Describe who you&apos;re targeting and the context the
+                    strategy engine should search for — buyer types, qualifying
+                    signals, disqualifiers, triggers, etc. This text drives the
+                    niches the agent defines and the web searches used to
+                    discover leads, so the more specific the better.
+                  </p>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={12}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                    placeholder="Describe your ideal customer profile and what the agent should search for..."
+                  />
                 </div>
 
                 <div className="flex items-center mt-4">
@@ -226,6 +273,12 @@ export default function PipelinesManager({
               </span>
             </div>
 
+            {pipeline.description && (
+              <p className="mb-4 text-sm text-gray-600 line-clamp-4 whitespace-pre-wrap">
+                {pipeline.description}
+              </p>
+            )}
+
             {(pipeline.settings as any)?.conceptStrategy && (
               <div className="mt-4 bg-gray-50 p-3 rounded text-sm text-gray-700">
                 <div className="font-semibold mb-1">Detailed Goal</div>
@@ -254,7 +307,7 @@ export default function PipelinesManager({
                 onClick={() => startEdit(pipeline)}
                 className="text-sm font-medium text-blue-600 hover:text-blue-500"
               >
-                Control Room &rarr;
+                Edit / Control Room &rarr;
               </button>
             </div>
           </div>
