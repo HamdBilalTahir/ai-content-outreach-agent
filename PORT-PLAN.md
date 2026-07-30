@@ -33,7 +33,7 @@ that forced them are the expensive part to rediscover.
 | 6     | Email send path (choke point)              | ~660         | `4a0ef4d` |
 | 6b¹   | Send tool, text contracts, reinit ladder   | ~750         | `8c0e61a` |
 | 6b²   | Nudge, booking email, email views          | ~1,400       | —         |
-| 7a    | Voice foundation                           | ~470         | `PH7A`    |
+| 7a    | Voice foundation                           | ~470         | `3711843` |
 | 7b    | make_phone_call, review_transcript, EL svc | ~5,030       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
 | 9     | HubSpot / CRM                              | ~2,700       | —         |
