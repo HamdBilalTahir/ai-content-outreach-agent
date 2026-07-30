@@ -6,6 +6,38 @@
 
 ---
 
+> ### Outbound agent port — Phase 4: the compliance and guard services
+>
+> - **What changed:** Ported the eleven services that decide whether a specific contact may be reached at all, plus three small native replacements for inbound lookups they depend on.
+>   - `services/suppression.ts` — the `email_suppression` store: three classes (deliverability / consent / complaint), the SendGrid live-list mirror, and the versioned-HMAC unsubscribe token.
+>   - `services/dncFullScrub.ts` — the DNCScrub consolidated Full Scrub client, with the clean-code **allowlist** (`C W X E O H V F G`) so an undocumented or newly-introduced result code can never accidentally pass.
+>   - `services/phoneScreening.ts` — the enrollment-time phone gate. `decide()` (the CNAM business/consumer matrix) is ported and tested but **not called**: CNAM returned `"unknown"` for very nearly every number, which in `business_only` mode blocked almost every DNC-clean lead. It is kept intact so re-enabling is one line.
+>   - `services/twilioCallerType.ts` — the CNAM client and its 180-day cache, sharing `phone_lookups` with the inbound line-type cache under distinct keys so neither clobbers the other.
+>   - `services/verification.ts` — layered email verification (syntax → disposable → role → MX → optional provider), using Node's `dns.promises` rather than a DNS dependency.
+>   - `services/reputation.ts` — the domain circuit breaker, the warm-up ramp, the transactional daily budget, and the `email_send_log` writers.
+>   - `services/voiceConcurrency.ts` — the atomic reserved-slot ledger for voice calls.
+>   - `services/chatPause.ts` — the reversible freeze, and the overdue-task repair that resume has to perform.
+>   - `services/notInterested.ts` — the decline handler.
+>   - `services/voiceRouting.ts` — durable post-call chat resolution.
+>   - `firebase/{featureFlags,phoneNumbers,twilio}.ts` — the three inbound reads these needed, ported native.
+> - **Why:** This is the layer that answers "may we contact this person, on this channel, right now" — the consent and reputation gates. Its defining characteristic is that the **fail directions are all different and each is chosen for a specific asymmetric cost**, which is why they are asserted individually in the suites rather than assumed consistent:
+>   - `suppression.isSuppressed` fails **CLOSED** — a storage error returns a synthetic `deliverability` entry, because mailing an address whose state we could not read is worse than not mailing it.
+>   - `voiceConcurrency.tryReserveVoiceSlot` fails **CLOSED** and has **no bypass** — the cap is absolute; a skipped dial simply reschedules.
+>   - `reputation.consumeDomainBudget` fails **CLOSED** — this is a reputation control, not a rate control, so an over-send against a cold domain costs far more than a deferral.
+>   - `dncFullScrub` and `verification` fail **OPEN** on transport — a vendor outage must not halt all outreach; note `is_clean: null` (inconclusive) is deliberately distinct from `false` (a scrub that ran and said no).
+>   - `featureFlags.isEnabled` fails **CLOSED**, which in `phoneScreening` means screening is _skipped_ rather than every lead blocked — the same direction producing the permissive outcome, because the call-time gate is the backstop.
+>   - `verification` with **no provider key configured treats an MX pass as a pass**: the provider is a quality upgrade, never a prerequisite, so a missing key cannot halt all mail.
+> - **Files:**
+>   - `outbound/services/{suppression,dncFullScrub,phoneScreening,twilioCallerType,verification,reputation,voiceConcurrency,chatPause,notInterested,voiceRouting}.ts`
+>   - `outbound/firebase/{featureFlags,phoneNumbers,twilio}.ts`
+>   - `outbound/__tests__/services/{suppression,reputation,guardServices}.test.ts`
+> - **Bug fixed in the port (with the source's own stated intent as the spec):** `voiceConcurrency` wrote its whole live-slot map back with `set(..., merge=True)` and commented that this "purges expired slots atomically too". It does not — Firestore merges map fields **recursively**, so keys absent from the payload survive. The `active_slots` map therefore accumulated one dead entry per chat ever dialed, growing without bound toward the 1MB document limit. The cap itself was never wrong (the live-slot filter runs on read), which is exactly why the defect was invisible. Both the reserve path and `reconcileVoiceSlots` now use dot-path `FieldValue.delete()`, which achieves what the comment intended. `releaseVoiceSlot` uses the same mechanism, which additionally means a release can no longer clobber a concurrent reserve for a different chat.
+> - **Deferred:** `reputation.email_daily_summary` needs `sendgrid_mail.resolve_sendgrid_config` to read each domain's per-agent ramp configuration, so it lands with the email phase. Everything the breaker and budget need is here.
+> - **Verification:** 658 tests across 15 suites (117 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **Second non-obvious behaviour pinned by test:** `reputation.inWarmup` is `rampCap(days) < configuredCap`, and the ramp's last rung is 50 — so any configured cap **above 50 is never reached and the domain stays permanently "in warm-up"**, keeping the stricter first-complaint-halts rule in force forever. An initial test asserted it would eventually go false. That reading is the conservative one for a domain configured beyond what the ramp will ever authorize, so the behaviour is preserved and now documented on the function.
+
+---
+
 > ### Outbound agent port — Phase 3: the outbound chat state & gate layer
 >
 > - **What changed:** Ported `outbound_agent/services/chat.py` (1,508 lines) to `outbound/services/chat.ts`. This module was **not in the original phase plan** — it surfaced while reading Phase 3's intended contents, because `not_interested.py` (and, transitively, the cron, the campaign pacer, and every send tool) imports from it. It is the dependency root for everything downstream, so it was pulled out into its own phase and the guard services shifted to Phase 4. What landed:
