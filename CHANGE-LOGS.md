@@ -6,6 +6,34 @@
 
 ---
 
+> ### Outbound agent port — Phase 5: the campaign lifecycle
+>
+> - **What changed:** Ported the five modules that drive a campaign from creation to completion — the enrollment path, the campaign engine, the cadence safety net, booking reminders, and the cron that advances all of it.
+>   - `services/enroll.ts` — `enrollContact`, the single entry point into the flow: creates or dedupes the chat, seeds memory, applies the four-stage phone gate chain, resolves the outreach lane, sets stage `New`, and schedules the channel-neutral outreach task. Plus `resolveLocation` and `markContacted`.
+>   - `services/campaigns.ts` — the status machine (`enrolling → running`, with `paused`/`stopped` cascades), the two pacing bases, the four cursor-driven chat sweeps, `enrollCampaignBatch` with enrollment-time verification and the area-code gate, and the cron's campaign-id selectors.
+>   - `services/stalledRecovery.ts` — `recoverOrCollapseChat`, the deterministic `reviewChat`, `fallbackToEmailLane`, `ensureNextStepAfterCall`, **plus** `finalizeUnresolvedCall` and `reconcileStalePendingCalls` pulled forward from Phase 7 (see below).
+>   - `services/reminders.ts` — the lead-time-aware pre-demo plan, scheduled in CODE rather than by the model.
+>   - `services/cron.ts` — `processOutboundTasks` and the overdue-safe `filterDueOutboundTasks`.
+> - **Why:** This phase is where the four independent layers that stop a task running twice finally sit together, and each exists because the one before it is insufficient — which is why the suite asserts them separately rather than as one behaviour:
+>   1. **the wide lookback** (14 days) guarantees an overdue task is still _found_ — the shared query's `now - 2·window` lower bound would strand anything overdue by more than a few minutes;
+>   2. **per-chat serialization** keeps only the oldest due task per chat, because two DIFFERENT due tasks on one chat race past the non-atomic processing lock and the per-task claim cannot stop them — the task ids differ;
+>   3. **the atomic dispatch claim** marks the task executed _at dispatch_, before the 15–45s turn;
+>   4. **the per-chat dial guard**, inside the call tool.
+>
+>   Two other decisions carry their own reasoning. The **business-hours pre-gate sits at the task level**: an out-of-hours outreach task is rescheduled and no turn runs at all, because gating inside the turn would burn a turn, produce reasoning, and leak a "deferred" card into the customer-visible conversation. And **phone-lane contacts do not consume email `per_day` slots** — the separate `email_paced_count` base exists precisely to prevent that, since phone contacts fire today within business hours under voice-concurrency throttling rather than being day-bucketed.
+>
+> - **Files:**
+>   - `outbound/services/{enroll,campaigns,stalledRecovery,reminders,cron}.ts`
+>   - `outbound/__tests__/services/{enroll,campaigns,cadenceRecovery}.test.ts`
+> - **Plan revision — two functions arrived three phases early.** `finalizeUnresolvedCall` and `reconcileStalePendingCalls` were deferred out of Phase 3 to Phase 7 pending `voiceConcurrency` and `stalledRecovery`. `voiceConcurrency` landed in Phase 4 and `stalledRecovery` is this phase, so both are now unblocked and ported here rather than left absent for two more phases. They also **do not live in `services/chat.ts`** as the source has them: `finalizeUnresolvedCall` calls `ensureNextStepAfterCall` while `reviewChat` calls back into it — a module-level cycle the source breaks with lazy imports inside function bodies. Co-locating the two halves removes the cycle outright instead of reproducing it; `chat.ts` keeps the pure predicate `callAwaitingReview` that both rely on.
+> - **Two deliberate seams, both documented in the module docstrings:**
+>   - **The cron takes its LLM turn runner as a parameter.** The source lazily imports `run_outbound_llm` inside the function to break a circular import; the LLM layer is Phase 8. Injecting it makes the entire orchestration — claim, gates, serialization, priority split, retry — testable now, with Phase 8 supplying the real runner and Phase 10 wiring it. The email daily summary the cron also emits arrives with the email phase.
+>   - **`resolveAudiencePage` supports the `csv` source only.** The HubSpot list/search/allow-list sources need the contact-fetch layer and are one function's worth of surface. An unported type returns an _empty page_ rather than throwing, so the worker settles the campaign instead of spinning on it every tick. Everything else — the status machine, pacing, cursors, batching, the lane split, verification, the area-code gate, the stats breakdown — is complete and exercised against a CSV audience today.
+> - **Verification:** 783 tests across 18 suites (125 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **A latent inconsistency found and deliberately NOT fixed:** `scheduling.taskChannel` reads a **top-level** `channel`, but `createTaskWithId` nests the caller's payload under `data` (verified against the inbound source — Phase 1 is faithful). So the channel tag that `stalledRecovery`'s scheduler writes lands at `data.channel` and is never seen; such a task falls through to type inference instead. It is currently harmless, because every call site that writes the tag also passes `perChannel = false`, so the grouping is never consulted for those tasks. Reading `data.channel` too would newly group a dual test chat's tasks by channel — a live behaviour change nothing has asked for — so the behaviour is preserved and the reasoning recorded on the function. This is the same bar applied in Phase 4: change behaviour when the code does not do what it says it does, not when it merely looks wrong.
+>
+> ---
+>
 > ### Outbound agent port — Phase 4: the compliance and guard services
 >
 > - **What changed:** Ported the eleven services that decide whether a specific contact may be reached at all, plus three small native replacements for inbound lookups they depend on.

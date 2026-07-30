@@ -142,6 +142,15 @@ async function deletePendingTasks(
  *
  * Used ONLY for per-channel enforcement on dual (test) chats. Untagged single-lane production tasks
  * are never grouped by this.
+ *
+ * OBSERVED INCONSISTENCY, preserved rather than fixed: this reads a TOP-LEVEL `channel`, but
+ * `createTaskWithId` nests the caller's payload under `data`, so the tag that `stalledRecovery`'s
+ * channel-step scheduler writes lands at `data.channel` and is NOT seen here — such a task falls
+ * through to the type inference instead. It is currently harmless, because every call site that
+ * writes the tag also passes `perChannel = false`, so the grouping is never consulted for those
+ * tasks. Left alone deliberately: reading `data.channel` too would newly group a dual test chat's
+ * tasks by channel, which is a live behaviour change nothing has asked for. Fix it together with the
+ * call sites if per-channel enforcement is ever turned on for scheduler-created tasks.
  */
 export function taskChannel(td: TaskDoc | null | undefined): OutreachLane {
   const ch = String(td?.channel ?? '')

@@ -29,14 +29,14 @@ that forced them are the expensive part to rediscover.
 | 2     | Deterministic gating layer                 | ~2,200       | `535b545` |
 | 3     | Outbound chat state & gate layer           | 1,508        | `82cee65` |
 | 4     | Compliance & guard services                | ~1,740       | `efe5e34` |
-| 5     | Campaign lifecycle                         | ~2,050       | —         |
+| 5     | Campaign lifecycle                         | ~2,050       | `PHASE5`  |
 | 6     | Email pipeline                             | ~2,500       | —         |
 | 7     | Voice                                      | ~5,000       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
 | 9     | HubSpot / CRM                              | ~2,700       | —         |
 | 10    | HTTP surface & backfills                   | ~1,500       | —         |
 
-Current: **658 tests / 15 suites**, `tsc` and `eslint` clean.
+Current: **783 tests / 18 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -46,12 +46,17 @@ Current: **658 tests / 15 suites**, `tsc` and `eslint` clean.
    became Phase 3 on its own and everything after shifted by one.
 2. **`conversation_summary.py` cannot ship with Phase 5.** It calls
    `outbound_agent.llm.ask.generate_text`, so it moves to Phase 8 with the LLM layer.
+3. **`finalizeUnresolvedCall` / `reconcileStalePendingCalls` arrived in Phase 5, not Phase 7.** Both
+   were deferred out of Phase 3 pending `voiceConcurrency` (which landed in Phase 4) and
+   `stalledRecovery` (Phase 5), so by Phase 5 both dependencies existed. They also moved OUT of
+   `services/chat.ts` into `stalledRecovery.ts`: they are mutually dependent with
+   `ensureNextStepAfterCall`, a cycle the source breaks with lazy imports and co-location removes.
 
 Expect more of these. The source's import graph is not the directory structure.
 
 ## Remaining phases
 
-### Phase 5 — campaign lifecycle (~2,050 lines)
+### Phase 5 — campaign lifecycle (~2,050 lines) — ✅ DONE
 
 `campaigns.py` (687) · `enroll.py` (432) · `cron.py` (423) · `stalled_recovery.py` (288) ·
 `reminders.py` (216)
@@ -127,15 +132,18 @@ Thin once everything beneath it exists, which is why it is last.
 
 Every function knowingly absent from the port, and where it lands. Nothing else is missing.
 
-| Deferred                          | Out of | Into | Blocked on                                         |
-| --------------------------------- | ------ | ---- | -------------------------------------------------- |
-| `chat.ensureMeetingHost`          | 3      | 9    | `hubspot.resolveHubspotConfig`, `resolveOwnerName` |
-| `chat.finalizeUnresolvedCall`     | 3      | 7    | `voiceConcurrency`, `stalledRecovery`              |
-| `chat.reconcileStalePendingCalls` | 3      | 7    | as above                                           |
-| `callScope` (voice-prompt half)   | 2      | 7    | voice prompt assembly                              |
-| `reputation.emailDailySummary`    | 4      | 6    | `sendgridMail.resolveSendgridConfig`               |
-| `conversationSummary`             | 5      | 8    | `llm.ask.generateText`                             |
-| enroll's 6 HubSpot stamps         | 5      | 9    | `services/hubspot`                                 |
+| Deferred                              | Out of | Into | Blocked on                                         |
+| ------------------------------------- | ------ | ---- | -------------------------------------------------- |
+| `chat.ensureMeetingHost`              | 3      | 9    | `hubspot.resolveHubspotConfig`, `resolveOwnerName` |
+| ~~`chat.finalizeUnresolvedCall`~~     | 3      | 5 ✅ | landed early — deps arrived in Phase 4/5           |
+| ~~`chat.reconcileStalePendingCalls`~~ | 3      | 5 ✅ | landed early, same reason                          |
+| `callScope` (voice-prompt half)       | 2      | 7    | voice prompt assembly                              |
+| `reputation.emailDailySummary`        | 4      | 6    | `sendgridMail.resolveSendgridConfig`               |
+| `conversationSummary`                 | 5      | 8    | `llm.ask.generateText`                             |
+| enroll's 6 HubSpot stamps             | 5      | 9    | `services/hubspot`                                 |
+| `cron` email daily summary            | 5      | 6    | `sendgridMail.resolveSendgridConfig`               |
+| `cron` turn runner (injected)         | 5      | 8    | `llm.run.runOutboundLlm` — a parameter, not absent |
+| `resolveAudiencePage` HubSpot sources | 5      | 9    | HubSpot contact-fetch layer                        |
 
 ## Deliberate divergences from the source
 
