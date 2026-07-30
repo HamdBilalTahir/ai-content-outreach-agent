@@ -462,6 +462,180 @@ export async function writeSendLog(
   }
 }
 
+export interface DailySummary {
+  sent: number;
+  failed: number;
+  deferred_by_domain_budget: number;
+  deferred_by_bucket: number;
+  deferred_by_breaker: number;
+  skipped_by_reason: Record<string, number>;
+  breaker_state: string;
+  by_domain: Record<
+    string,
+    {
+      sent: number;
+      failed: number;
+      deferred: number;
+      skipped: number;
+      effective_ramp_cap: number;
+      warmup_start_date: string | null;
+    }
+  >;
+  attempts: number;
+}
+
+/**
+ * Today's email-pipeline outcomes, emitted once per cron tick so ops can see a backlog forming instead
+ * of discovering a week-old queue.
+ *
+ * WARNs when domain-budget deferrals exceed 30% of the day's attempts, which is the signal that
+ * campaign `per_day` values oversubscribe the domain cap — the campaigns are promising more sends per
+ * day than the warming domain will ever authorize.
+ *
+ * The per-domain cap and warm-up come from each domain's OWN agent config rather than a single global
+ * env fallback, so the summary reflects the real ramp per domain and the "warm-up start not set"
+ * warning only fires for a domain genuinely missing one. Config lookups are cached per agent within
+ * the call.
+ *
+ * Deferred out of the compliance phase to here, because it needs `resolveSendgridConfig`.
+ */
+export async function emailDailySummary(): Promise<DailySummary> {
+  const since = new Date().toISOString().slice(0, 10) + 'T00:00:00+00:00';
+
+  let sent = 0;
+  let failed = 0;
+  let deferredBudget = 0;
+  let deferredBucket = 0;
+  let deferredBreaker = 0;
+  const skippedByReason: Record<string, number> = {};
+  const byDomain: Record<
+    string,
+    {
+      sent: number;
+      failed: number;
+      deferred: number;
+      skipped: number;
+      agent_id: string;
+    }
+  > = {};
+
+  try {
+    const snap = await db
+      .collection(SEND_LOG)
+      .where('sent_at', '>=', since)
+      .get();
+    for (const doc of snap.docs) {
+      const d = doc.data() ?? {};
+      const status = String(d.status ?? '');
+      const dom = String(d.domain ?? '') || domainOf(d.sender) || '(unknown)';
+      const dd = (byDomain[dom] ??= {
+        sent: 0,
+        failed: 0,
+        deferred: 0,
+        skipped: 0,
+        agent_id: '',
+      });
+      // Any row's agent_id resolves this domain's config.
+      if (!dd.agent_id && d.agent_id) dd.agent_id = String(d.agent_id);
+
+      if (SENT_STATUSES.has(status)) {
+        sent += 1;
+        dd.sent += 1;
+      } else if (status === 'failed') {
+        failed += 1;
+        dd.failed += 1;
+      } else if (status === 'deferred') {
+        const reason = String(d.reason ?? '');
+        if (reason === 'domain_budget') deferredBudget += 1;
+        else if (reason === 'hourly_bucket') deferredBucket += 1;
+        else deferredBreaker += 1;
+        dd.deferred += 1;
+      } else if (status === 'skipped') {
+        const key = String(d.reason ?? 'unknown').split(':')[0];
+        skippedByReason[key] = (skippedByReason[key] ?? 0) + 1;
+        dd.skipped += 1;
+      }
+    }
+  } catch (e) {
+    console.warn(`[REPUTATION] daily summary query failed (${e})`);
+  }
+
+  const cfgCache = new Map<string, Record<string, unknown>>();
+  const domainCfg = async (
+    agentId: string
+  ): Promise<Record<string, unknown>> => {
+    if (!agentId) return {};
+    if (!cfgCache.has(agentId)) {
+      try {
+        const { resolveSendgridConfig } = await import('./sendgridMail');
+        const { getAgentActions } = await import('../firebase/agent');
+        cfgCache.set(
+          agentId,
+          resolveSendgridConfig(
+            await getAgentActions(agentId)
+          ) as unknown as Record<string, unknown>
+        );
+      } catch (e) {
+        console.warn(
+          `[REPUTATION] daily summary config resolve failed for ${agentId}: ${e}`
+        );
+        cfgCache.set(agentId, {});
+      }
+    }
+    return cfgCache.get(agentId) ?? {};
+  };
+
+  const domains: DailySummary['by_domain'] = {};
+  for (const [dom, dd] of Object.entries(byDomain)) {
+    const cfg = await domainCfg(dd.agent_id);
+    domains[dom] = {
+      sent: dd.sent,
+      failed: dd.failed,
+      deferred: dd.deferred,
+      skipped: dd.skipped,
+      effective_ramp_cap: effectiveDailyCap(
+        cfg.daily_cap as number | string | null,
+        cfg.warmup_start_date as string | null
+      ),
+      warmup_start_date: (cfg.warmup_start_date as string | null) ?? null,
+    };
+  }
+
+  const brk = await breakerCheck();
+  const skippedTotal = Object.values(skippedByReason).reduce(
+    (a, b) => a + b,
+    0
+  );
+  const attempts =
+    sent +
+    failed +
+    deferredBudget +
+    deferredBucket +
+    deferredBreaker +
+    skippedTotal;
+
+  const summary: DailySummary = {
+    sent,
+    failed,
+    deferred_by_domain_budget: deferredBudget,
+    deferred_by_bucket: deferredBucket,
+    deferred_by_breaker: deferredBreaker,
+    skipped_by_reason: skippedByReason,
+    breaker_state: brk.halted ? `halted: ${brk.reason}` : 'clear',
+    by_domain: domains,
+    attempts,
+  };
+
+  if (attempts && deferredBudget / attempts > 0.3) {
+    console.warn(
+      `[REPUTATION][EMAIL SUMMARY] OVERSUBSCRIPTION: ${deferredBudget}/${attempts} ` +
+        `(${Math.round((deferredBudget / attempts) * 100)}%) of today's attempts deferred by the ` +
+        `domain budget — campaign per_day values exceed the cap; re-pace campaigns.`
+    );
+  }
+  return summary;
+}
+
 /**
  * An audit row for every email that did NOT go out — `failed` (a provider error), `skipped` (a gate
  * reason), or `deferred` (a budget, breaker, or bucket condition) — so ops can see exactly why each

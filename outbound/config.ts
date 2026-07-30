@@ -190,9 +190,17 @@ export const voiceSlotTtlMinutes = () =>
 // Email pipeline
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const emailsPerHour = () => envInt('OUTBOUND_EMAILS_PER_HOUR', 60);
+/**
+ * Per-agent hourly send ceiling. The default is **10**, matching the source exactly.
+ *
+ * An earlier revision of this file had 60, which would have let a warming domain send six times the
+ * source's hourly rate — the precise failure the whole reputation layer exists to prevent. Both this
+ * and the per-recipient default below are overridden per-agent by the SendGrid action's
+ * `additional_meta`, so the env value only applies to an agent that leaves them unset.
+ */
+export const emailsPerHour = () => envInt('OUTBOUND_EMAILS_PER_HOUR', 10);
 export const emailsPerRecipientPerDay = () =>
-  envInt('EMAILS_PER_RECIPIENT_PER_DAY', 3);
+  envInt('EMAILS_PER_RECIPIENT_PER_DAY', 5);
 export const domainDailyCap = () => envInt('DOMAIN_DAILY_CAP', 50);
 export const domainStartDate = () => envStr('DOMAIN_START_DATE');
 export const emailSandboxMode = () => flagDefaultOff('EMAIL_SANDBOX_MODE');

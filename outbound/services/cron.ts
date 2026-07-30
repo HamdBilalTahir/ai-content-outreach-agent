@@ -50,6 +50,7 @@ import { checkBusinessHours } from './businessHours';
 import { claimTask, dispatchClaimEnabled } from './taskDispatch';
 import { nextBusinessHoursStart } from './scheduling';
 import { reconcileVoiceSlots } from './voiceConcurrency';
+import { emailDailySummary, type DailySummary } from './reputation';
 import { reconcileStalePendingCalls } from './stalledRecovery';
 import {
   archiveCampaignBatch,
@@ -283,6 +284,8 @@ export interface CronResult {
   failed: number;
   due: number;
   deferred: number;
+  /** `{}` when the summary itself faulted — a summary fault never breaks the tick. */
+  email_summary: DailySummary | Record<string, never>;
 }
 
 export interface CronOptions {
@@ -517,5 +520,23 @@ export async function processOutboundTasks(
     }
   }
 
-  return { success: true, processed, failed, due, deferred };
+  // The email daily summary: sent, deferred-by-cause, skipped-by-reason, breaker state, and the
+  // per-domain effective ramp cap — with the oversubscription WARN inside `emailDailySummary`.
+  // Best-effort, because a summary fault must never break the tick.
+  let emailSummary: DailySummary | Record<string, never> = {};
+  try {
+    emailSummary = await emailDailySummary();
+    console.log(`[OB CRON][EMAIL SUMMARY] ${JSON.stringify(emailSummary)}`);
+  } catch (e) {
+    console.warn(`[OB CRON] email summary failed (non-blocking): ${e}`);
+  }
+
+  return {
+    success: true,
+    processed,
+    failed,
+    due,
+    deferred,
+    email_summary: emailSummary,
+  };
 }

@@ -6,6 +6,30 @@
 
 ---
 
+> ### Outbound agent port — Phase 6: the email send path
+>
+> - **What changed:** Ported the email choke point and its transport, and closed the one deferral left open by Phase 4.
+>   - `services/sendgridMail.ts` — the transport plus `resolveSendgridConfig`, which reads the per-agent SendGrid action. There is deliberately **no hardcoded from-address and no env fallback for the API key**: outbound runs on a dedicated warming domain, so sending from the main domain or via a shared key would burn it, and an unconfigured agent gets a refusal rather than a default.
+>   - `services/emailSender.ts` — **the unified choke point.** Every outbound email passes through `sendEmail`; direct transport calls are forbidden and the suite asserts it. The LLM and skills decide _what to say_, this module decides _what every email carries_ and _who never receives one_.
+>   - `reputation.emailDailySummary` — **deferred out of Phase 4**, unblocked here because it needs `resolveSendgridConfig` to read each domain's own ramp configuration. Now wired into the cron tick, which was the other half of that deferral.
+> - **Why:** Two properties in this module are order-dependent, and a plausible-looking reordering breaks either one silently — so both are asserted explicitly rather than assumed:
+>   1. **The gate order.** The business-hours gate sits **after** the address-quality skips, so a suppressed or invalid address is TERMINALLY skipped and never converted into a retry task — retrying a dead address later is the exact failure the module exists to prevent. And it sits **before** the consuming gates, so an after-hours send burns neither a bucket token nor domain budget. The per-recipient cap is last of the consumers and **releases the domain budget** when it skips, so a terminal skip never costs the day's budget.
+>   2. **The two axes, which were one axis once — and that caused silent drops.** `gate_profile` (which gates apply) is chosen by **state, not by the caller**: a stale thread keeps its threading headers but gates as cold outreach, because class privileges are earned by state. `origin` (who owns a deferral) is fixed at the call site, and every deferred send has an owner — a retry task for `llm_tool`, a self-rescheduling service for `nudge_service`, and an assertion-log for `transactional_service`, which should never reach a deferring gate at all.
+>
+>   The **fail directions are again deliberately mixed** and asserted individually: local suppression fails CLOSED on its own data, the provider's live list fails OPEN on API errors, the domain budget fails CLOSED because it is a reputation control, and the hourly bucket and recipient cap fail OPEN because they are rate controls.
+>
+> - **Files:**
+>   - `outbound/services/{sendgridMail,emailSender}.ts`
+>   - `outbound/services/reputation.ts` (`emailDailySummary`)
+>   - `outbound/services/cron.ts` (summary hookup)
+>   - `outbound/config.ts`
+>   - `outbound/__tests__/services/emailSender.test.ts`
+> - **Bug fixed — a Phase 0 config defect with real consequences:** `emailsPerHour` defaulted to **60**; the source's default is **10**. That would have let a warming domain send six times the source's hourly rate — precisely the failure the entire reputation layer exists to prevent, and invisible until an agent left `per_hour` unset on its SendGrid action. `emailsPerRecipientPerDay` was also wrong (3 vs the source's 5), in the harmless direction. Both corrected, with the reasoning recorded on the export so the value is not "tidied" back.
+> - **Verification:** 822 tests across 19 suites (39 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **Phase scope note:** Phase 6 was planned as the whole email pipeline. It is split at the choke-point boundary, because `emailSender` is what every other email module calls and is independently complete and verifiable. The conversation-handling half — `email_review` (361), `inbound_email_nudge` (422), `inbound_booking_email` (233), `tools/email` (385), and the two email views (749) — becomes **Phase 6b**, recorded in `PORT-PLAN.md` with its dependencies. Nothing is silently dropped: the deferral ledger tracks it.
+>
+> ---
+>
 > ### Outbound agent port — Phase 5: the campaign lifecycle
 >
 > - **What changed:** Ported the five modules that drive a campaign from creation to completion — the enrollment path, the campaign engine, the cadence safety net, booking reminders, and the cron that advances all of it.

@@ -30,13 +30,14 @@ that forced them are the expensive part to rediscover.
 | 3     | Outbound chat state & gate layer           | 1,508        | `82cee65` |
 | 4     | Compliance & guard services                | ~1,740       | `efe5e34` |
 | 5     | Campaign lifecycle                         | ~2,050       | `c725948` |
-| 6     | Email pipeline                             | ~2,500       | —         |
+| 6     | Email send path (choke point)              | ~660         | `PH6`     |
+| 6b    | Email conversation handling                | ~2,150       | —         |
 | 7     | Voice                                      | ~5,000       | —         |
 | 8     | LLM turn engine                            | ~4,400       | —         |
 | 9     | HubSpot / CRM                              | ~2,700       | —         |
 | 10    | HTTP surface & backfills                   | ~1,500       | —         |
 
-Current: **783 tests / 18 suites**, `tsc` and `eslint` clean.
+Current: **822 tests / 19 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -51,6 +52,10 @@ Current: **783 tests / 18 suites**, `tsc` and `eslint` clean.
    `stalledRecovery` (Phase 5), so by Phase 5 both dependencies existed. They also moved OUT of
    `services/chat.ts` into `stalledRecovery.ts`: they are mutually dependent with
    `ensureNextStepAfterCall`, a cycle the source breaks with lazy imports and co-location removes.
+
+4. **Phase 6 split at the choke-point boundary.** `emailSender` is what every other email module
+   calls, and is independently complete and verifiable, so it shipped as Phase 6. The
+   conversation-handling half became Phase 6b.
 
 Expect more of these. The source's import graph is not the directory structure.
 
@@ -73,14 +78,31 @@ and add them in Phase 9. This is a real seam, not a shortcut.
 
 `conversation_summary.py` → Phase 8.
 
-### Phase 6 — email pipeline (~2,500 lines)
+### Phase 6 — email send path (~660 lines) — ✅ DONE
 
-`email_sender.py` (495) · `email_review.py` (361) · `inbound_email_nudge.py` (422) ·
-`inbound_booking_email.py` (233) · `sendgrid_mail.py` (168) · `tools/email.py` (385) ·
-`views/email_webhook.py` (471) · `views/email_compliance.py` (278)
+`sendgrid_mail.py` (168) · `email_sender.py` (495)
 
-**Arrives with this phase:** `reputation.emailDailySummary` — deferred out of Phase 4 because it
-needs `sendgrid_mail.resolve_sendgrid_config` to read each domain's per-agent warm-up ramp.
+Also closed `reputation.emailDailySummary` (deferred out of Phase 4) and wired it into the cron.
+
+### Phase 6b — email conversation handling (~2,150 lines)
+
+`email_review.py` (361) · `inbound_email_nudge.py` (422) · `inbound_booking_email.py` (233) ·
+`tools/email.py` (385) · `views/email_webhook.py` (471) · `views/email_compliance.py` (278)
+
+All of these call `emailSender.sendEmail`, which now exists, so the send path is no longer a
+blocker for any of them.
+
+Two things to check before starting:
+
+- **`tools/email.py` carries the PEWC disclosure constants** (`PEWC_DISCLOSURE_MARKER`,
+  `PEWC_DISCLOSURE_TEXT`) that `email_review` also keys on deterministically — the marker is how code
+  confirms prior-express-WRITTEN consent (versus mere prior-express) before enabling an auto-call.
+  Port those constants wherever the first of the two modules lands; they are a shared contract, not
+  tool-local text. The disclosure wording is flagged in the source as counsel-approval-pending, so it
+  must be transcribed verbatim and not reworded.
+- **`tools/email.py` is an LLM tool**, so its dispatch wrapper may belong with Phase 8. Its body is
+  mostly deterministic (the booking-confirmation guard regex, no-answer freshness, subject-thread
+  handling) and that part is portable now.
 
 ### Phase 7 — voice (~5,000 lines)
 
@@ -174,8 +196,14 @@ per chat ever dialed, growing without bound toward the 1MB document limit. The c
 (the live-slot filter runs on read), which is exactly why it was invisible. Reserve and reconcile now
 use dot-path `FieldValue.delete()`, achieving what the comment intended.
 
+`emailsPerHour` (Phase 6) defaulted to **60**; the source's default is **10**. That would have let a
+warming domain send six times the source's hourly rate — the precise failure the reputation layer
+exists to prevent, and invisible until an agent left `per_hour` unset on its SendGrid action.
+`emailsPerRecipientPerDay` was also wrong (3 vs 5), in the harmless direction. Both corrected.
+
 The source's own stated intent was the spec. That is the bar for changing behaviour: not "this looks
-wrong" but "this does not do what it says it does".
+wrong" but "this does not do what it says it does". A default that silently disagrees with the source
+is the same class of defect: the code does not do what the module it configures says it does.
 
 ## Fail directions
 
