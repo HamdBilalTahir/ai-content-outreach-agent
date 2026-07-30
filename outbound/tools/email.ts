@@ -58,6 +58,7 @@ import {
 } from '../services/chat';
 import { deletePendingOutboundOutreach } from '../services/scheduling';
 import { markContacted } from '../services/enroll';
+import { registerTool } from '../llm/toolRegistry';
 import type { AgentAction } from '../firebase/agent';
 import type { BedrockMessage, ChatMemory } from '../types';
 
@@ -84,6 +85,10 @@ export const emailToolDescription = {
     },
   },
 } as const;
+
+// Register with the model layer's tool registry at module load, so the agent can call this tool the
+// moment the module is imported — no separate wiring step, and no list here to drift out of sync.
+registerTool(emailToolDescription.toolSpec.name, emailToolDescription);
 
 export interface EmailToolInput {
   to?: string;

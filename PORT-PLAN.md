@@ -22,24 +22,25 @@ that forced them are the expensive part to rediscover.
 
 ## Status
 
-| Phase | Scope                                      | Source lines | Commit    |
-| ----- | ------------------------------------------ | ------------ | --------- |
-| 0     | Scaffolding, config, types, Firestore seam | —            | `ac2e775` |
-| 1     | Data-access layer (`outbound/firebase/*`)  | —            | `c939110` |
-| 2     | Deterministic gating layer                 | ~2,200       | `535b545` |
-| 3     | Outbound chat state & gate layer           | 1,508        | `82cee65` |
-| 4     | Compliance & guard services                | ~1,740       | `efe5e34` |
-| 5     | Campaign lifecycle                         | ~2,050       | `c725948` |
-| 6     | Email send path (choke point)              | ~660         | `4a0ef4d` |
-| 6b¹   | Send tool, text contracts, reinit ladder   | ~750         | `8c0e61a` |
-| 6b²   | Nudge, booking email, email views          | ~1,400       | —         |
-| 7a    | Voice foundation                           | ~470         | `3711843` |
-| 7b    | make_phone_call, review_transcript, EL svc | ~5,030       | —         |
-| 8     | LLM turn engine                            | ~4,400       | —         |
-| 9     | HubSpot / CRM                              | ~2,700       | —         |
-| 10    | HTTP surface & backfills                   | ~1,500       | —         |
+| Phase | Scope                                             | Source lines | Commit    |
+| ----- | ------------------------------------------------- | ------------ | --------- |
+| 0     | Scaffolding, config, types, Firestore seam        | —            | `ac2e775` |
+| 1     | Data-access layer (`outbound/firebase/*`)         | —            | `c939110` |
+| 2     | Deterministic gating layer                        | ~2,200       | `535b545` |
+| 3     | Outbound chat state & gate layer                  | 1,508        | `82cee65` |
+| 4     | Compliance & guard services                       | ~1,740       | `efe5e34` |
+| 5     | Campaign lifecycle                                | ~2,050       | `c725948` |
+| 6     | Email send path (choke point)                     | ~660         | `4a0ef4d` |
+| 6b¹   | Send tool, text contracts, reinit ladder          | ~750         | `8c0e61a` |
+| 6b²   | Nudge, booking email, email views                 | ~1,400       | —         |
+| 7a    | Voice foundation                                  | ~470         | `3711843` |
+| 7b    | make_phone_call, review_transcript, EL svc        | ~5,030       | —         |
+| 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `PH8A`    |
+| 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
+| 9     | HubSpot / CRM                                     | ~2,700       | —         |
+| 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **932 tests / 21 suites**, `tsc` and `eslint` clean.
+Current: **978 tests / 22 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -136,13 +137,30 @@ may have to land alongside or after Phase 8 — check its imports before committ
 `make_phone_call` depends on the voice concurrency ledger (Phase 4), the dial guard and call index
 (Phase 3), and the call scope (Phase 7a) — all present.
 
-### Phase 8 — LLM turn engine (~4,400 lines)
+### Phase 8a — the model layer (~1,400 lines) — ✅ DONE
 
-`llm/run.py` (1,892) · `llm/ask.py` (1,350) · `call_llm_outbound.py` (1,105) · the task/stage tools
+`llm/ask.py` (1,350) · the `provider` switch it depends on
+
+Unblocks `review_call_transcript`, `conversation_summary`, and the four email-review LLM checks
+re-sequenced out of Phase 6b.
+
+**The tool registry.** The source imports ~20 tool schemas directly into the model layer. This port
+inverts that: each tool calls `registerTool` at module load, and `llm/toolRegistry.ts` is the only
+thing the model layer knows. So a tool becomes available the moment it is ported, with no edit to the
+model layer. `send_email` is registered; every later tool should do the same in its own module.
+
+### Phase 8b — the turn engine (~3,000 lines)
+
+`llm/run.py` (1,892) · `call_llm_outbound.py` (1,105) · the task/stage tools
 (`create_custom_task` 260, `update_custom_task` 120, `delete_custom_task` 57,
 `mark_prospect_lost` 180, `mark_cadence_complete` 103, `clear_not_interested` 56)
 
-**Arrives with this phase:** `conversation_summary.py`, moved out of Phase 5.
+**Arrives with this phase:**
+
+- `conversationSummary` — needs `generateText`, which now exists.
+- The four `emailReview` LLM checks re-sequenced out of Phase 6b — but note they also need
+  `review_call_transcript`'s helpers, so they land after Phase 7b.
+- The cron's `runTurn` parameter gets its real implementation (`runOutboundLlm`).
 
 ### Phase 9 — HubSpot / CRM (~2,700 lines)
 

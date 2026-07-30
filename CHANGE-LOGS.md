@@ -6,6 +6,27 @@
 
 ---
 
+> ### Outbound agent port — Phase 8a: the model layer
+>
+> - **What changed:** Ported the multi-provider model layer. **This was done ahead of Phase 7b on purpose** — see the sequencing note below.
+>   - `llm/ask.ts` — `generateText` and its routing, the three provider paths (Bedrock Converse, direct Anthropic, Groq), the format converters in both directions for each, the empty-text sanitizer, and `textOf` for the one-shot callers.
+>   - `llm/provider.ts` — the global `LLM_PROVIDER` switch and the Bedrock → Anthropic model mapping.
+>   - `llm/toolRegistry.ts` — the tool-description registry.
+> - **Why this phase moved, and it is a genuine plan correction:** Phase 7a's note said to lead Phase 7b with `review_call_transcript` because it holds the LLM helpers the email work needs, but to **check its imports before committing to that order**. Checking them settled it the other way: `review_call_transcript` imports `llm.ask.generate_text` at MODULE level. So the model layer is the real bottleneck — it gates `review_call_transcript`, `conversation_summary`, AND the four re-sequenced email-review LLM checks. Doing it first unblocks all three; doing 7b first would have blocked immediately. Checking rather than assuming is what caught this.
+> - **The design decisions worth recording:**
+>   - **Three providers, ONE wire format.** Bedrock Converse shape is canonical; Groq and Anthropic requests are converted out of it and their responses converted back. That is why nothing downstream deals in anything but Bedrock-shaped messages, and why switching provider changes nothing for callers.
+>   - **Models map by TIER, not by exact snapshot.** Several snapshots that still work on Bedrock are RETIRED on the direct Anthropic API and 404 there — the source names four verified cases. Exact-snapshot mapping would look more faithful and fail in production, so the tests assert the retired ids specifically map _forward_.
+>   - **Every Groq route is FORCED onto one allowed model,** with a warning. This deployment permits exactly one for tool-call reliability, so an unexpected Groq model is corrected rather than attempted.
+>   - **A registry replaces ~20 direct tool-schema imports.** The source imports each tool's schema into the model layer, which works in Python where every tool module exists; here the tools land across several phases, so a direct-import model layer would not compile until the last one arrived. Inverting the dependency means the model layer is complete now and a tool becomes available the moment it is ported, with no edit to the layer. The behaviour that matters is preserved: an enabled function with no registered schema is SKIPPED with a warning, so a partial tool set degrades to a smaller tool list rather than a failed turn.
+> - **Files:**
+>   - `outbound/llm/{ask,provider,toolRegistry}.ts`
+>   - `outbound/tools/email.ts` (registers itself at module load)
+>   - `outbound/__tests__/llm/modelLayer.test.ts`
+> - **Verification:** 978 tests across 22 suites (46 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **A bug of mine, caught by its own test:** the empty-text sanitizer compared `kept.length !== content.length` **after** substituting the placeholder, so the single-empty-block case never spliced — one block replaced by one placeholder, lengths equal, no write. The source compares the filtered list against the original by value; comparing lengths is a valid proxy only _before_ substitution. Now it compares the filter result and returns early when nothing was removed. Worth noting the sanitizer is exactly where this matters: Bedrock rejects an empty text block anywhere in the history, so a message that should have become `(no content)` would have failed the whole request.
+>
+> ---
+>
 > ### Outbound agent port — Phase 7a: the voice foundation
 >
 > - **What changed:** Ported the voice modules that other things depend on, and closed the oldest open deferral in the ledger.
