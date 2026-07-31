@@ -332,7 +332,9 @@ export async function scheduleDemoBookingFallback(
       `[REVIEW][BOOK] chat=${chatId}: demo agreed but slot unmatched → scheduled book_meeting fallback`
     );
   } catch (e) {
-    console.warn(`[REVIEW][BOOK] demo booking fallback failed (non-blocking): ${e}`);
+    console.warn(
+      `[REVIEW][BOOK] demo booking fallback failed (non-blocking): ${e}`
+    );
   }
 }
 
@@ -389,7 +391,9 @@ export async function parseAndRunReviewCallTranscript(
   if (agentId) {
     const agentData = await getAgent(agentId);
     if (agentData) {
-      provider = String(agentData.voice_ai_provider ?? 'elevenlabs').toLowerCase();
+      provider = String(
+        agentData.voice_ai_provider ?? 'elevenlabs'
+      ).toLowerCase();
     }
   }
 
@@ -431,7 +435,9 @@ export async function parseAndRunReviewCallTranscript(
     }
 
     const transcript = callInfo.transcript ?? '';
-    console.log(`[REVIEW] Transcript fetched, length=${transcript.length} chars`);
+    console.log(
+      `[REVIEW] Transcript fetched, length=${transcript.length} chars`
+    );
     if (!transcript) {
       result.message =
         'Transcript not available yet. The call may still be processing.';
@@ -601,7 +607,9 @@ export async function parseAndRunReviewCallTranscript(
               `${JSON.stringify(Object.keys(schemaExtracted))}`
           );
         } catch (e) {
-          console.warn(`[REVIEW] Schema extraction failed (non-blocking): ${e}`);
+          console.warn(
+            `[REVIEW] Schema extraction failed (non-blocking): ${e}`
+          );
         }
       } else {
         console.log(
@@ -784,7 +792,11 @@ export async function parseAndRunReviewCallTranscript(
           schemaExtracted.customer_email,
           channelPref.followup_email,
         ]
-          .map((e) => String(e ?? '').trim().toLowerCase())
+          .map((e) =>
+            String(e ?? '')
+              .trim()
+              .toLowerCase()
+          )
           .filter((e) => e.length > 0)
       );
       const ownPhones = new Set(
@@ -954,7 +966,7 @@ export async function parseAndRunReviewCallTranscript(
       result.do_not_email_now = true;
       result.next_step_note =
         'A book_meeting task is scheduled — it books the meeting via schedule_hubspot_meeting and ' +
-        'THEN sends the single confirmation email (with the link) in that task\'s turn. Do NOT send ' +
+        "THEN sends the single confirmation email (with the link) in that task's turn. Do NOT send " +
         'any confirmation email in THIS turn; the meeting is not booked yet.';
       // A demo is booked → any pending proactive outreach (a Day-0 call the skill pre-scheduled, or a
       // stale duplicate left by a human-@ai-override call) is now redundant. Clear it so a booked
@@ -974,7 +986,9 @@ export async function parseAndRunReviewCallTranscript(
 
     // 8.6 Voice follow-up: a callback ONLY when the outcome was a callback, never on a demo.
     if (chatId && isCallback) {
-      if (await scheduleCallback(chatId, agentId, currentMemory, callbackTime)) {
+      if (
+        await scheduleCallback(chatId, agentId, currentMemory, callbackTime)
+      ) {
         result.follow_up_scheduled = 'callback';
       }
       console.log(
@@ -1020,7 +1034,9 @@ export async function parseAndRunReviewCallTranscript(
       resolved || Object.keys(schemaExtracted).length > 0;
     const engaged =
       hasEngagementSignal ||
-      (transcript ? await hadMeaningfulEngagement(transcript, metaData) : false);
+      (transcript
+        ? await hadMeaningfulEngagement(transcript, metaData)
+        : false);
     if (chatId && engaged) {
       try {
         const dealersId = String(
@@ -1057,9 +1073,7 @@ export async function parseAndRunReviewCallTranscript(
         // Comms analytics are dealer-scoped and the source only writes them when a dealers_id exists;
         // outbound prospects have none, so there is nothing to write here. Phase 9: syncHubspotStage.
       } catch (e) {
-        console.error(
-          `[ProspectAnalytics] Failed to set Engaged stage: ${e}`
-        );
+        console.error(`[ProspectAnalytics] Failed to set Engaged stage: ${e}`);
       }
     } else if (chatId) {
       // No engagement signal — but "no engagement" is NOT "voicemail", and we must not guess. See the

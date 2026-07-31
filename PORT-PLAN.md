@@ -37,7 +37,7 @@ that forced them are the expensive part to rediscover.
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
 | 7b²b¹ | Post-call classifiers + review actions            | ~470         | `366bd09` |
-| 7b²b² | Review orchestrator (`review_call_transcript`)     | ~700         | PENDING   |
+| 7b²b² | Review orchestrator (`review_call_transcript`)    | ~700         | PENDING   |
 | 7b²c  | EL agent service, voice views, dial-by-number     | ~1,285       | —         |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
@@ -191,23 +191,23 @@ Thin once everything beneath it exists, which is why it is last.
 
 Every function knowingly absent from the port, and where it lands. Nothing else is missing.
 
-| Deferred                              | Out of | Into | Blocked on                                         |
-| ------------------------------------- | ------ | ---- | -------------------------------------------------- |
-| `chat.ensureMeetingHost`              | 3      | 9    | `hubspot.resolveHubspotConfig`, `resolveOwnerName` |
-| ~~`chat.finalizeUnresolvedCall`~~     | 3      | 5 ✅ | landed early — deps arrived in Phase 4/5           |
-| ~~`chat.reconcileStalePendingCalls`~~ | 3      | 5 ✅ | landed early, same reason                          |
-| `callScope` (voice-prompt half)       | 2      | 7    | voice prompt assembly                              |
-| `reputation.emailDailySummary`        | 4      | 6    | `sendgridMail.resolveSendgridConfig`               |
-| `conversationSummary`                 | 5      | 8    | `llm.ask.generateText`                             |
-| enroll's 6 HubSpot stamps             | 5      | 9    | `services/hubspot`                                 |
-| `cron` email daily summary            | 5      | 6    | `sendgridMail.resolveSendgridConfig`               |
-| `cron` turn runner (injected)         | 5      | 8    | `llm.run.runOutboundLlm` — a parameter, not absent |
-| `resolveAudiencePage` HubSpot sources | 5      | 9    | HubSpot contact-fetch layer                        |
-| review's `resolveBookingSlot` (injected) | 7b²b² | 9 | `hubspot.getHubspotSlots` — a parameter, not absent |
-| review's `maybeAddDealConversationNote` | 7b²b² | 9    | `services/hubspot` — best-effort in the source      |
-| review's `preservePriorEmailOnContact` | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
-| review's `syncHubspotStage`           | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
-| `fetchCallFromVapi`                   | 7b²b²  | —    | unreachable: no Vapi dialer exists in this port      |
+| Deferred                                 | Out of | Into | Blocked on                                          |
+| ---------------------------------------- | ------ | ---- | --------------------------------------------------- |
+| `chat.ensureMeetingHost`                 | 3      | 9    | `hubspot.resolveHubspotConfig`, `resolveOwnerName`  |
+| ~~`chat.finalizeUnresolvedCall`~~        | 3      | 5 ✅ | landed early — deps arrived in Phase 4/5            |
+| ~~`chat.reconcileStalePendingCalls`~~    | 3      | 5 ✅ | landed early, same reason                           |
+| `callScope` (voice-prompt half)          | 2      | 7    | voice prompt assembly                               |
+| `reputation.emailDailySummary`           | 4      | 6    | `sendgridMail.resolveSendgridConfig`                |
+| `conversationSummary`                    | 5      | 8    | `llm.ask.generateText`                              |
+| enroll's 6 HubSpot stamps                | 5      | 9    | `services/hubspot`                                  |
+| `cron` email daily summary               | 5      | 6    | `sendgridMail.resolveSendgridConfig`                |
+| `cron` turn runner (injected)            | 5      | 8    | `llm.run.runOutboundLlm` — a parameter, not absent  |
+| `resolveAudiencePage` HubSpot sources    | 5      | 9    | HubSpot contact-fetch layer                         |
+| review's `resolveBookingSlot` (injected) | 7b²b²  | 9    | `hubspot.getHubspotSlots` — a parameter, not absent |
+| review's `maybeAddDealConversationNote`  | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
+| review's `preservePriorEmailOnContact`   | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
+| review's `syncHubspotStage`              | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
+| `fetchCallFromVapi`                      | 7b²b²  | —    | unreachable: no Vapi dialer exists in this port     |
 
 ## Deliberate divergences from the source
 

@@ -88,8 +88,13 @@ const LIVE =
 
 /** Every result field the tool returns, unwrapped from the Bedrock toolResult envelope. */
 function unwrap(msg: unknown): Record<string, unknown> {
-  const content = (msg as { content: { toolResult: { content: { json: Record<string, unknown> }[] } }[] })
-    .content;
+  const content = (
+    msg as {
+      content: {
+        toolResult: { content: { json: Record<string, unknown> }[] };
+      }[];
+    }
+  ).content;
   return content[0].toolResult.content[0].json;
 }
 
@@ -174,7 +179,10 @@ function neutralVerdicts() {
     agreed_time: null,
     quote: null,
   });
-  referral.mockResolvedValue({ ok: true, new_chat_id: 'outbound__agentA__new' });
+  referral.mockResolvedValue({
+    ok: true,
+    new_chat_id: 'outbound__agentA__new',
+  });
   summary.mockResolvedValue('a summary');
   (getAgent as jest.Mock).mockResolvedValue({
     voice_ai_provider: 'elevenlabs',
@@ -372,7 +380,9 @@ describe('no live human answered', () => {
   });
 
   test('a no-answer summary NEVER clobbers a real-conversation summary', async () => {
-    seedChat({ memory: { _conversation_summary: 'Jane asked about pricing.' } });
+    seedChat({
+      memory: { _conversation_summary: 'Jane asked about pricing.' },
+    });
     answerer.mockResolvedValue('voicemail');
     await review(callInfo());
     expect(memory()._conversation_summary).toBe('Jane asked about pricing.');
@@ -393,7 +403,12 @@ describe('schema extraction', () => {
   test('persists extracted fields under memory and reports the change', async () => {
     stageSkills.mockResolvedValue([
       'Contacted',
-      [{ memory_schema: { fleet_size: { type: 'number' } }, instructions: 'x' }],
+      [
+        {
+          memory_schema: { fleet_size: { type: 'number' } },
+          instructions: 'x',
+        },
+      ],
     ]);
     extract.mockResolvedValue({ fleet_size: 12 });
     const r = await review(callInfo());
