@@ -42,13 +42,14 @@ forced them are the expensive part to rediscover.
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
 | 7b²b¹ | Post-call classifiers + review actions            | ~470         | `366bd09` |
 | 7b²b² | Review orchestrator (`review_call_transcript`)    | ~700         | `3ed032f` |
-| 7b²c  | EL agent service, voice views, dial-by-number     | ~1,285       | —         |
+| 7b²c  | ElevenLabs agent provisioning                     | ~1,189       | PENDING   |
+| 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | —         |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,155 tests / 26 suites**, `tsc` and `eslint` clean.
+Current: **1,223 tests / 27 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -163,15 +164,24 @@ booking fallback. Fetch the transcript, classify, then act on the outcome (book,
 transfer a referral, mark not-interested, finalize an unresolved call). Four HubSpot calls deferred to
 Phase 9, one of them (`resolveBookingSlot`) as an injected parameter rather than an absence.
 
-#### 7b²c — the agent service and the voice views (~1,285 lines)
+#### 7b²c — ElevenLabs agent provisioning (1,189 lines) — ✅ DONE
 
-`elevenlabs_agent_service.py` (1,189) · `views/elevenlabs_webhook.py` (242) ·
-`views/conversation_init_webhook.py` (207) · `views/voice_settings.py` (150) ·
-`views/voice_connect.py` (53) · `make_phone_call_from_number`
+`services/elevenlabs_agent_service.py` — the write side of the voice stack. Fixed a KB name/id
+misalignment; collapsed two verbatim source duplications; flagged a conversation-init URL that points
+at the inbound app.
 
-Verify the four views before starting: like the email views in Phase 6b², some may belong with the
-Phase 10 HTTP surface. The post-call webhook is the normal writer of the `elevenlabs_conversations`
-transcript the review prefers over a live re-fetch, so it pairs naturally with the orchestrator.
+#### 7b²d — the voice webhook handlers and dial-by-number (~500 lines)
+
+`views/elevenlabs_webhook.py` (242) · `views/conversation_init_webhook.py` (207) ·
+`make_phone_call_from_number`
+
+**The four voice views split two ways, decided by reading their imports.** The two WEBHOOKS carry real
+domain logic — signature verification, persisting the transcript to `elevenlabs_conversations` (the
+document the review orchestrator prefers over a live re-fetch), and seeding per-caller context — so
+their handlers belong here as framework-free functions. `views/voice_settings.py` (150) and
+`views/voice_connect.py` (53) are thin admin CRUD over the provisioner and moved to **Phase 10**.
+
+Everything the webhooks need exists except `enroll.resolveLocation`, which is already ported.
 
 ### Phase 8a — the model layer (~1,400 lines) — ✅ DONE
 
@@ -222,10 +232,15 @@ which is why the seam held for nine increments.
 ### Phase 10 — HTTP surface & backfills (~1,500 lines)
 
 `urls.py` (99) · `serializers.py` (90) · remaining `views/` (`campaigns` 227,
-`dnc_area_codes` 78, `task_cron_job` 40, `initiate_outbound_webhook` 43, `__init__` 52) ·
+`dnc_area_codes` 78, `task_cron_job` 40, `initiate_outbound_webhook` 43, `__init__` 52,
+plus `voice_settings` 150 and `voice_connect` 53 re-assigned from Phase 7b²c) ·
 `management/commands/` (7 backfills + `reconcile_stale_calls`)
 
 Thin once everything beneath it exists, which is why it is last.
+
+**One open question to settle here:** the provisioner points agents at the INBOUND conversation-init
+path while the outbound app mounts its own equivalent (see `CONVERSATION_INIT_PATH` in
+`elevenlabsAgentService.ts`). The correct value is only knowable once the route exists.
 
 ## Deferral ledger
 
@@ -248,6 +263,7 @@ Every function knowingly absent from the port, and where it lands. Nothing else 
 | review's `preservePriorEmailOnContact`   | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
 | review's `syncHubspotStage`              | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
 | `fetchCallFromVapi`                      | 7b²b²  | —    | unreachable: no Vapi dialer exists in this port     |
+| provisioner's `getToolsForAgent`         | 7b²c   | —    | inbound tools-mapper; best-effort in the source     |
 
 ## Deliberate divergences from the source
 
@@ -286,6 +302,14 @@ exists to prevent, and invisible until an agent left `per_hour` unset on its Sen
 The source's own stated intent was the spec. That is the bar for changing behaviour: not "this looks
 wrong" but "this does not do what it says it does". A default that silently disagrees with the source
 is the same class of defect: the code does not do what the module it configures says it does.
+
+`elevenlabsAgentService` (Phase 7b²c) built its knowledge-base result list by walking the **filtered**
+id list while indexing `sources[i]` for the name. The filter drops failed uploads — so the moment any
+one upload failed, every later entry was paired with a different source's name, silently mislabelling
+the agent's knowledge bases. Nothing errors and the count is right, which is why it would never be
+noticed. Both source KB functions had it; the port carries each name with its own id and drops failures
+afterwards. This is the same shape as the other two: the failure was invisible because something
+fail-soft absorbed it.
 
 The review orchestrator (Phase 7b²b²) carries a latent defect the port cannot express rather than one
 it fixes. Its deal-note retry reads `agent_id`, a name Python only binds when `meta_data` carried one;

@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * The workspace webhook resource id wired, in the provider dashboard, to the outbound post-call
  * endpoint. Overridable by env; the literal default is the one the source ships.
  */
-function outboundPostCallWebhookId(): string {
+export function outboundPostCallWebhookId(): string {
   return (
     envStr('ELEVENLABS_OUTBOUND_POST_CALL_WEBHOOK_ID') ||
     '24b19d5135ce45228aaba0d70dad1940'
