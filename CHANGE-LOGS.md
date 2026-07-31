@@ -6,6 +6,27 @@
 
 ---
 
+> ### Outbound agent port — Phase 7b²b¹: post-call classification and the review's actions
+>
+> - **What changed:** Ported the post-call classifiers and the five actions a review takes from them, as `outbound/tools/reviewActions.ts`: `classifyAnswerer`, `detectVoicemail`, `llmDetectVoicemail`, `hadMeaningfulEngagement`, `scheduleRetryCall`, `scheduleCallback`, `scheduleFollowupEmail`, `classifyEmail`, and `markCallReviewed`.
+> - **Why the two classifiers have OPPOSITE defaults, each chosen for recoverability.** This is the load-bearing property, and normalizing it would be a real regression:
+>   - `classifyAnswerer` defaults to **`"human"`** on any error. A wrong `human` leaves the chat at Contacted and the cadence re-dials — recoverable. Discarding a REAL call as voicemail is not.
+>   - `hadMeaningfulEngagement` defaults to **`false`**. Not advancing a stage is recoverable; a wrong advance corrupts the funnel.
+>
+>   A test asserts both directions side by side, from the same induced failure.
+>
+> - **There are deliberately NO deterministic phrase pre-checks, and the source explains the trade.** A phrase pre-check scanned the WHOLE transcript and fired on ANY machine phrase — so a call that OPENED with a machine segment (a call-screening "record your name", hold music, even a voicemail greeting) and THEN had a live person pick up was wrongly discarded. The pre-check guarded one thing, the model's weakness on very short machine greetings, which is a RECOVERABLE error — but it CAUSED the unrecoverable one. Review runs once per call off the hot path, so the extra model call is free. The single non-model shortcut is the FACTUAL zero-human-turns case, which needs no model call at all. Both prompts also state that turn counts must not be trusted, because an automated menu produces many turns and used to drive chats to Engaged.
+> - **`detectVoicemail` deliberately excludes IVR.** An IVR reached no person but is a DISTINCT outcome the caller handles separately; conflating the two would take the wrong follow-up action. Asserted directly.
+> - **Two things the follow-up email gets right that are easy to break:** a captured address is recorded as a SECONDARY entry and **never overwrites the primary `customer_email`** — a receptionist's shared inbox is not the prospect's address, and overwriting would silently redirect the whole cadence. And the wording is classification-aware: a department inbox gets a polite FORWARD request naming the prospect, a personal address is addressed directly, and both explicitly forbid no-answer and booking-confirmation wording because neither premise is true.
+> - **Files:**
+>   - `outbound/tools/reviewActions.ts`
+>   - `outbound/__tests__/tools/reviewActions.test.ts`
+> - **Verification:** 1,099 tests across 25 suites (45 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **`MAX_VOICE_RETRIES` is ZERO in the source, which disables the auto-retry entirely** — `attempts >= 0` always trips on the first check. Ported at 0 deliberately, with the code path intact, so restoring the behaviour is one constant change rather than a rewrite. Raising it during the port would have silently turned a disabled feature back on. A test pins the constant.
+> - **A source laxness preserved rather than tightened:** the follow-up-email validation is only "contains `@`, and the domain contains a dot", so `@nolocal.com` — an empty local part — passes. My first test asserted it would be rejected and failed against a faithful port. Left as-is: this call only schedules a TASK, and the send tool's own verification gate rejects an undeliverable address before anything is mailed, so there is no failure to justify a behaviour change. Also noted in the module: `scheduleFollowupEmail` reads the email opt-out from `memory` rather than the trustworthy top-level key the phone gates use — an inconsistency in the source, preserved because changing it would alter which contacts get a follow-up.
+>
+> ---
+>
 > ### Outbound agent port — Phase 7b²a: the call tool
 >
 > - **What changed:** Ported `tools/make_phone_call.py` — the outbound voice dial — as `outbound/tools/makePhoneCall.ts`, with its four-gate chain, the dial payload assembly, and the post-dial bookkeeping. Registers itself with the model layer's tool registry.

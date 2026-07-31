@@ -36,13 +36,14 @@ that forced them are the expensive part to rediscover.
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
-| 7b²b  | review orchestrator, EL agent svc, voice views    | ~2,455       | —         |
+| 7b²b¹ | Post-call classifiers + review actions            | ~470         | `PH7B2B1` |
+| 7b²b² | review orchestrator, EL agent svc, voice views    | ~1,985       | —         |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,054 tests / 24 suites**, `tsc` and `eslint` clean.
+Current: **1,099 tests / 25 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
