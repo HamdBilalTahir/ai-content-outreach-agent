@@ -45,7 +45,7 @@ forced them are the expensive part to rediscover.
 | 7b²c  | ElevenLabs agent provisioning                     | ~1,189       | `cacf6b4` |
 | 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | `6a78220` |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
-| 8b¹   | Task + lifecycle tools                            | ~776         | PENDING   |
+| 8b¹   | Task + lifecycle tools                            | ~776         | `4129a45` |
 | 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | —         |
 | 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | —         |
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | —         |
