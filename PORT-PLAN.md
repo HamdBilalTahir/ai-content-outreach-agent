@@ -41,7 +41,7 @@ forced them are the expensive part to rediscover.
 | 6     | Email send path (choke point)                     | ~660         | `4a0ef4d` |
 | 6b¹   | Send tool, text contracts, reinit ladder          | ~750         | `8c0e61a` |
 | 6b²a  | Email compliance (SendGrid events, unsubscribe)   | ~278         | `5871c96` |
-| 6b²b  | Inbound email-reply webhook handler               | ~471         | —         |
+| 6b²b  | Inbound email-reply webhook handler               | ~471         | PENDING   |
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
@@ -57,7 +57,7 @@ forced them are the expensive part to rediscover.
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,445 tests / 33 suites**, `tsc` and `eslint` clean.
+Current: **1,482 tests / 34 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -150,12 +150,15 @@ spam report, unsubscribe, group unsubscribe, dropped) and the unsubscribe endpoi
 HTTP routes are Phase 10, which also reuses `flagChatsForEmailEvent`'s `only_if_missing` mode for its
 backfill.
 
-#### 6b²b — the inbound email-reply webhook (~471 lines)
+#### 6b²b — the inbound email-reply webhook (~471 lines) — ✅ DONE
 
-`views/email_webhook.py`. Routes an inbound email reply to its outbound chat: sender/recipient
-candidate extraction from raw headers, the unsub-mailbox route, meeting-decline detection, and the
-`runOutboundLlm` handoff — which now exists (8b⁴). Its web-chat fallback calls the unported inbound
-nudge service and will be omitted, consistent with 6b²a.
+`views/email_webhook.py` → `services/emailWebhook.ts`. An ordered chain of SEVEN exits, where the order
+is the design — opt-out precedes any reply, and the calendar decline precedes the normal reply because
+a decline's body is usually empty. The web-chat fallback is omitted (unported inbound nudge service);
+an unmatched address falls through to the no-match exit, which is what the source does when no web chat
+matches either.
+
+**Phase 6b² is complete, and with it the email side of the port.**
 
 The LLM half of `email_review` is NOT here — it landed in Phase 7b¹.
 

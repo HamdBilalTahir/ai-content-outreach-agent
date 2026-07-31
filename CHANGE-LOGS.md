@@ -6,6 +6,26 @@
 
 ---
 
+> ### Outbound agent port — Phase 6b²b: the inbound email-reply webhook
+>
+> - **What changed:** Ported `views/email_webhook.py` as `outbound/services/emailWebhook.ts` — how a prospect's email reply actually reaches the agent. Handler only; the HTTP route is Phase 10. **Phase 6b² is complete**, and with it the email side of the port.
+> - **The module is an ordered chain of seven exits, and the ORDER is the design.** Each must be checked before the next, because the later step would do the wrong thing for a message the earlier one owns. Two placements are worth calling out specifically:
+>   - **Opt-out precedes any reply**, so an unsubscribe never receives an LLM answer. Obvious in hindsight, easy to break by moving the check.
+>   - **The decline precedes the normal reply**, because a calendar decline's body is usually **empty**. Replying to blank text produces nothing useful, so that branch drives the turn with an `@AI` instruction naming the declined slot instead of the (blank) reply body.
+> - **A paused chat is a TOTAL freeze**, including the thing that looks like an oversight: no nudge cancellation. Every other path cancels pending email follow-ups when the customer engages, but a paused chat stays exactly as it was until someone resumes it explicitly. Asserted directly, because "helpfully" cancelling there would silently change what resuming does.
+> - **"No matching chat" is a 200, not a 404.** SendGrid retries non-2xx deliveries, and an address that matched nothing will never match on a retry — so an error status would just generate load. Only an unparseable sender is a 400.
+> - **Sender resolution exists because forwarded mail hides the prospect.** On forwarded or redirected mail the top-level `from` is rewritten to the mailbox address, so the real sender appears only in `Reply-To`, the SMTP envelope, or the raw headers. All are collected into an ordered, de-duplicated candidate list, and matching by `memory.customer_email` drops the non-prospect addresses naturally.
+> - **The unsub mailbox is a content-independent opt-out trigger.** A List-Unsubscribe one-click `mailto:` frequently carries no opt-out words at all, so body matching alone would miss it entirely. Delivery to the mailbox is its own signal, with a local-part convention (`unsub@` / `unsubscribe@`) as the fallback for an agent with none configured.
+> - **Only the webhook writes the threading anchor.** `_last_inbound_email_message_id` and `_last_inbound_email_at` are set here and nowhere else — if the send path wrote them, a follow-up with no customer reply would thread as a reply and claim the reply gate's exemptions. The FIRST `Message-ID` in a preserved chain wins, since a forwarder prepends its own; tested with both present.
+> - **Header parsing had to be written, not imported.** Node has no `email.parser`, so `parseRawHeaders` returns a multimap — the headers that matter here (`Message-ID`, `Delivered-To`) legitimately repeat, and RFC 822 continuation lines are folded back onto their header.
+> - **Files:**
+>   - `outbound/services/emailWebhook.ts`
+>   - `outbound/__tests__/services/emailWebhook.test.ts`
+> - **Verification:** 1,482 tests across 34 suites (37 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **One test taught me something about the code.** I wrote EXIT 3 (the "not an outbound chat" guard) expecting to reach it with a `type: 'web'` chat — but the matcher is already outbound-strict, so such a chat never resolves and the request falls to EXIT 2 instead. The guard is genuinely unreachable through this path, which is exactly what defence in depth means; the test now asserts what actually happens and records why.
+>
+> ---
+>
 > ### Outbound agent port — Phase 6b²a: email compliance
 >
 > - **What changed:** Ported `views/email_compliance.py` as `outbound/services/emailCompliance.ts` — the SendGrid event webhook (bounce, spam report, unsubscribe, group unsubscribe, dropped) and the unsubscribe endpoint, as framework-free handlers. The HTTP routes arrive with Phase 10, which also reuses this module's `only_if_missing` flagging mode for its backfill.
