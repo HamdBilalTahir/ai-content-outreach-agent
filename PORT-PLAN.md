@@ -51,7 +51,7 @@ forced them are the expensive part to rediscover.
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b¹   | Task + lifecycle tools                            | ~776         | `4129a45` |
 | 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | `c30f9a3` |
-| 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | PENDING   |
+| 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | `c5219b9` |
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
