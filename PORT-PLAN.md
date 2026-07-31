@@ -3,7 +3,7 @@
 Porting `ai-sales-backend/outbound_agent` (a 37,241-line Django app; ~25,000 lines production,
 ~12,000 lines tests) to TypeScript under `outbound/`.
 
-This file is the plan of record. It was reconstructed from the source tree and has been **revised six
+This file is the plan of record. It was reconstructed from the source tree and has been **revised seven
 times from reading the source** — every revision is recorded below, because the dependency facts that
 forced them are the expensive part to rediscover.
 
@@ -40,7 +40,8 @@ forced them are the expensive part to rediscover.
 | 5     | Campaign lifecycle                                | ~2,050       | `c725948` |
 | 6     | Email send path (choke point)                     | ~660         | `4a0ef4d` |
 | 6b¹   | Send tool, text contracts, reinit ladder          | ~750         | `8c0e61a` |
-| 6b²   | Nudge, booking email, email views                 | ~1,400       | —         |
+| 6b²a  | Email compliance (SendGrid events, unsubscribe)   | ~278         | PENDING   |
+| 6b²b  | Inbound email-reply webhook handler               | ~471         | —         |
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
@@ -56,7 +57,7 @@ forced them are the expensive part to rediscover.
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,410 tests / 32 suites**, `tsc` and `eslint` clean.
+Current: **1,445 tests / 33 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -82,7 +83,18 @@ Current: **1,410 tests / 32 suites**, `tsc` and `eslint` clean.
    (Phase 8). Porting them now would mean stubbing five functions, which the ground rules forbid — so
    they moved to Phase 8 and the deterministic half shipped alone.
 
-6. **The model layer moved AHEAD of Phase 7b²'s review chain.** Checking
+6. **Phase 6b²'s two SERVICES turned out to be inbound features, and are not ported at all.**
+   `inbound_email_nudge.py` (422) and `inbound_booking_email.py` (233) both open with a gate that
+   REFUSES outbound chats — `if chat_data.get("type") == "outbound": return`, with the booking email
+   even commenting "outbound emails are the outbound skill's job". Their only production callers are
+   `inbound_agent/views/call_llm_web.py` (the inbound web turn) and the outbound email webhook's
+   FALLBACK path for a web chat. Their genuinely shared parts were already extracted in Phase 6b¹ as
+   `services/emailText.ts` (the opt-out regex, the quoted-reply stripper), and `_recent_transcript` is
+   only needed by Phase 9's HubSpot notes. So ~655 of Phase 6b²'s ~1,400 lines are out of scope, and
+   6b² is really just its two webhook handlers. Same lesson as revision 5, from the other direction: the
+   directory an outbound file lives in does not make it outbound code.
+
+7. **The model layer moved AHEAD of Phase 7b²'s review chain.** Checking
    `review_call_transcript`'s imports before committing to an order showed its helpers need
    `llm.ask.generate_text`, so Phase 8a shipped first and the review chain followed. This is the payoff
    for writing "verify the dependencies before starting" into the plan rather than trusting the numbering.
@@ -125,16 +137,27 @@ copy classifiers) now live in `services/emailText.ts` — one owner, rather than
 and the nudge with the review importing from both. That resolves the shared-contract question this
 plan previously flagged.
 
-### Phase 6b² — nudge, booking email, email views (~1,400 lines)
+### Phase 6b² — the email webhook handlers (~750 lines)
 
-`inbound_email_nudge.py` (422) · `inbound_booking_email.py` (233) · `views/email_webhook.py` (471) ·
-`views/email_compliance.py` (278)
+**Revised down from ~1,400 after reading the sources — see revision 7.** `inbound_email_nudge.py` (422)
+and `inbound_booking_email.py` (233) are INBOUND web-widget features that refuse outbound chats
+outright, and are not ported. What remains is the two webhook handlers, which are genuinely outbound.
 
-All call `emailSender.sendEmail` and the `emailText` matchers, both of which now exist. The nudge's
-module-level imports are minimal (Firestore only), so it looks portable; verify the booking email and
-the two views before starting, since the views may belong with the Phase 10 HTTP surface.
+#### 6b²a — email compliance (~278 lines) — ✅ DONE
 
-The LLM half of `email_review` is NOT here — see Phase 8.
+`views/email_compliance.py` → `services/emailCompliance.ts`. The SendGrid event webhook (bounce,
+spam report, unsubscribe, group unsubscribe, dropped) and the unsubscribe endpoint. Handlers only; the
+HTTP routes are Phase 10, which also reuses `flagChatsForEmailEvent`'s `only_if_missing` mode for its
+backfill.
+
+#### 6b²b — the inbound email-reply webhook (~471 lines)
+
+`views/email_webhook.py`. Routes an inbound email reply to its outbound chat: sender/recipient
+candidate extraction from raw headers, the unsub-mailbox route, meeting-decline detection, and the
+`runOutboundLlm` handoff — which now exists (8b⁴). Its web-chat fallback calls the unported inbound
+nudge service and will be omitted, consistent with 6b²a.
+
+The LLM half of `email_review` is NOT here — it landed in Phase 7b¹.
 
 ### Phase 7a — voice foundation (~470 lines) — ✅ DONE
 

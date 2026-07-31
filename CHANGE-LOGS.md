@@ -6,6 +6,23 @@
 
 ---
 
+> ### Outbound agent port — Phase 6b²a: email compliance
+>
+> - **What changed:** Ported `views/email_compliance.py` as `outbound/services/emailCompliance.ts` — the SendGrid event webhook (bounce, spam report, unsubscribe, group unsubscribe, dropped) and the unsubscribe endpoint, as framework-free handlers. The HTTP routes arrive with Phase 10, which also reuses this module's `only_if_missing` flagging mode for its backfill.
+> - **A plan revision first, because it is the bigger finding: ~655 of Phase 6b²'s ~1,400 lines are not outbound code at all.** `inbound_email_nudge.py` (422) and `inbound_booking_email.py` (233) both open with a gate that REFUSES outbound chats — `if chat_data.get("type") == "outbound": return`, with the booking email even commenting *"outbound emails are the outbound skill's job"*. Their only production callers are the **inbound** web turn (`inbound_agent/views/call_llm_web.py`) and the outbound email webhook's fallback path for a web chat. Their genuinely shared parts were already extracted in Phase 6b¹ into `services/emailText.ts`. So they are not ported, and Phase 6b² is really just its two webhook handlers. Recorded as plan revision 7 — the same lesson as revision 5 from the other direction: **the directory an outbound file lives in does not make it outbound code.**
+> - **GET must never unsubscribe anyone, and that is the whole design of the endpoint.** Corporate mail scanners — SafeLinks, Proofpoint, Mimecast — fetch every URL in a message, so a GET that suppressed would let a single corporate link-scan mass-unsubscribe an entire domain. GET renders a confirmation page and does nothing else; only POST suppresses, covering both the page button and RFC 8058 one-click (empty body, no login). Tested by asserting GET leaves the chat flag untouched.
+> - **This module fails CLOSED, which is the opposite of the port's usual default.** Almost every gate in this codebase fails open so a fault cannot stop outreach. Here an unverifiable event is REJECTED: a forged event could suppress an arbitrary address and silence a real prospect permanently. No public key configured means reject unless `SENDGRID_WEBHOOK_ALLOW_UNSIGNED=true` says otherwise, and only the literal `"true"` counts. The ECDSA P-256 verification is tested against a real generated key pair, including a tampered body and a swapped timestamp.
+> - **Every one of these events closes the EMAIL channel only.** A bounce, an unsubscribe, or a spam report never marks the prospect Lost, never touches `phone_opt_out`, and deliberately leaves `call_followup` tasks standing — a bad address or a withdrawn email consent says nothing about whether the person can be called, and treating it as terminal would discard workable leads at scale. Asserted directly, including that a pending call task survives an unsubscribe.
+> - **Suppression stops the mail; the chat flag is what makes it explicable.** `suppress()` is global and invisible. The chat-level work — the trustworthy top-level `email_opt_out` / `email_invalid` keys, the memory mirror, the label, the activity row, and the visible `@ai` note naming the prospect — exists so a human can see WHY mail stopped instead of finding a silently dead thread. `dropped` is deliberately suppress-only: a drop is usually a downstream effect of an already-suppressed address, so flagging the chat off it would be a false signal.
+> - **`only_if_missing` makes the backfill re-runnable.** It reads the chat first and skips it entirely when the target flags are already set, so a second run posts no duplicate notes. Both directions tested.
+> - **Files:**
+>   - `outbound/services/emailCompliance.ts`
+>   - `outbound/__tests__/services/emailCompliance.test.ts`
+> - **Verification:** 1,445 tests across 33 suites (35 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **One fixture of mine was wrong again:** the visible `@ai` note is written to `messages_v3`, not `messages`, so my assertions were reading an empty collection. Corrected against `logInternalNote` rather than adjusting the code.
+>
+> ---
+>
 > ### Outbound agent port — Phase 8b⁴: the turn entry, and the cron seam closes
 >
 > - **What changed:** Ported `call_llm_outbound.py`'s outbound turn assembly as `outbound/llm/turn.ts` — `runOutboundTurn` (prompt assembly, the concurrency lock, the dispatch loop, persistence) and `runOutboundLlm`, the in-process runner the cron and email webhook call. Added `firebase/agent.getAgentPrompt`. **The cron's injected `runTurn` now defaults to the real implementation**, closing the seam Phase 5 opened — the last open seam outside Phase 9's HubSpot resolver.
