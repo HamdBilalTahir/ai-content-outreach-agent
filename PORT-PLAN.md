@@ -3,9 +3,9 @@
 Porting `ai-sales-backend/outbound_agent` (a 37,241-line Django app; ~25,000 lines production,
 ~12,000 lines tests) to TypeScript under `outbound/`.
 
-This file is the plan of record. It was reconstructed from the source tree and has been **revised
-twice from reading the source** — both revisions are recorded below, because the dependency facts
-that forced them are the expensive part to rediscover.
+This file is the plan of record. It was reconstructed from the source tree and has been **revised six
+times from reading the source** — every revision is recorded below, because the dependency facts that
+forced them are the expensive part to rediscover.
 
 ## Ground rules
 
@@ -18,7 +18,11 @@ that forced them are the expensive part to rediscover.
 - **Fail directions are preserved verbatim and documented per function.** They are deliberately
   inconsistent across modules (see below) and a later "consistency" cleanup would break one.
 - **Behaviour is preserved over tidiness.** Where the source does something surprising, the port
-  pins it with a test and records _why_ on the function. Two such cases so far, both listed below.
+  pins it with a test and records _why_ on the function. The bar for changing behaviour is not "this
+  looks wrong" but "this does not do what it _says_ it does" — see the bug-fix section.
+- **A phase's own tests are suspect too.** Six increments so far had a failing test whose FIXTURE was
+  invented rather than read from the source or the ported helper. Check which of the two is wrong
+  before touching either.
 
 ## Status
 
@@ -70,8 +74,13 @@ Current: **1,155 tests / 26 suites**, `tsc` and `eslint` clean.
    (Phase 8). Porting them now would mean stubbing five functions, which the ground rules forbid — so
    they moved to Phase 8 and the deterministic half shipped alone.
 
+6. **The model layer moved AHEAD of Phase 7b²'s review chain.** Checking
+   `review_call_transcript`'s imports before committing to an order showed its helpers need
+   `llm.ask.generate_text`, so Phase 8a shipped first and the review chain followed. This is the payoff
+   for writing "verify the dependencies before starting" into the plan rather than trusting the numbering.
+
 Expect more of these. The source's import graph is not the directory structure. Note the direction of
-this one: a phase can be blocked by a phase that comes _after_ it, and the fix is to re-sequence, not
+revision 5: a phase can be blocked by a phase that comes _after_ it, and the fix is to re-sequence, not
 to stub.
 
 ## Remaining phases
@@ -132,17 +141,37 @@ LLM half of `email_review.py`. Closed FOUR ledger rows at once.
 
 ### Phase 7b² — the call tools and the agent service (~4,430 lines)
 
-`tools/make_phone_call.py` (1,975) · `tools/review_call_transcript.py` — the orchestrator, minus the
-helpers already ported (~1,100 remaining) · `elevenlabs_agent_service.py` (1,189) ·
-`views/elevenlabs_webhook.py` (242) · `views/conversation_init_webhook.py` (207) ·
-`views/voice_settings.py` (150) · `views/voice_connect.py` (53)
+Split into four increments, because `make_phone_call` and the review chain are independently complete
+and verifiable and the review chain itself has three natural layers (classifiers → actions →
+orchestrator). Everything they need already existed: the voice concurrency ledger (Phase 4), the dial
+guard and call index (Phase 3), the call scope (Phase 7a), the model layer (Phase 8a), and the review
+toolkit (Phase 7b¹).
 
-Everything these need now exists: the voice concurrency ledger (Phase 4), the dial guard and call index
-(Phase 3), the call scope (Phase 7a), the model layer (Phase 8a), and the review toolkit (Phase 7b¹).
+#### 7b²a — `make_phone_call` (1,975 lines) — ✅ DONE
 
-`review_call_transcript`'s remaining body is the orchestrator — fetch the transcript, classify, then act
-on the outcome (book, schedule a callback, transfer a referral, mark not-interested, finalize an
-unresolved call). Its HubSpot booking calls will defer to Phase 9.
+The four-gate dial chain. Its HubSpot availability injection and `ensureMeetingHost` defer to Phase 9.
+
+#### 7b²b¹ — post-call classifiers and actions (~470 lines) — ✅ DONE
+
+`classifyAnswerer`, `detectVoicemail`, `llmDetectVoicemail`, `hadMeaningfulEngagement`, and the five
+actions a review takes from them. The two classifiers' OPPOSITE defaults are the load-bearing property.
+
+#### 7b²b² — the review orchestrator (~700 lines) — ✅ DONE
+
+`parse_and_run_review_call_transcript` plus the ElevenLabs transcript fetch and the unmatched-demo
+booking fallback. Fetch the transcript, classify, then act on the outcome (book, schedule a callback,
+transfer a referral, mark not-interested, finalize an unresolved call). Four HubSpot calls deferred to
+Phase 9, one of them (`resolveBookingSlot`) as an injected parameter rather than an absence.
+
+#### 7b²c — the agent service and the voice views (~1,285 lines)
+
+`elevenlabs_agent_service.py` (1,189) · `views/elevenlabs_webhook.py` (242) ·
+`views/conversation_init_webhook.py` (207) · `views/voice_settings.py` (150) ·
+`views/voice_connect.py` (53) · `make_phone_call_from_number`
+
+Verify the four views before starting: like the email views in Phase 6b², some may belong with the
+Phase 10 HTTP surface. The post-call webhook is the normal writer of the `elevenlabs_conversations`
+transcript the review prefers over a live re-fetch, so it pairs naturally with the orchestrator.
 
 ### Phase 8a — the model layer (~1,400 lines) — ✅ DONE
 
@@ -164,10 +193,12 @@ model layer. `send_email` is registered; every later tool should do the same in 
 
 **Arrives with this phase:**
 
-- `conversationSummary` — needs `generateText`, which now exists.
-- The four `emailReview` LLM checks re-sequenced out of Phase 6b — but note they also need
-  `review_call_transcript`'s helpers, so they land after Phase 7b.
-- The cron's `runTurn` parameter gets its real implementation (`runOutboundLlm`).
+- The cron's `runTurn` parameter gets its real implementation (`runOutboundLlm`) — the last open
+  injected seam apart from the review's `resolveBookingSlot` (Phase 9).
+
+Both items previously listed here already landed in Phase 7b¹: `conversationSummary` and the four
+`emailReview` LLM checks shipped alongside `review_call_transcript`'s helpers, which is what they were
+actually waiting on.
 
 ### Phase 9 — HubSpot / CRM (~2,700 lines)
 
@@ -178,6 +209,15 @@ model layer. `send_email` is registered; every later tool should do the same in 
 
 - `chat.ensureMeetingHost`, deferred out of Phase 3. Its pure half `meetingHostFact` is ported.
 - The six enrollment/contacted CRM stamps deferred out of Phase 5 (see the enroll seam above).
+- `resolveAudiencePage`'s HubSpot contact sources (Phase 5) and `referralTransfer`'s CRM lookup
+  (Phase 7a).
+- `makePhoneCall`'s availability injection and `tools/email`'s stage sync (Phase 7b²a, 6b¹).
+- The review's four HubSpot calls (Phase 7b²b²) — `resolveBookingSlot` fills the injected parameter;
+  `maybeAddDealConversationNote`, `preservePriorEmailOnContact`, and `syncHubspotStage` were each
+  best-effort and non-blocking in the source.
+
+Nothing in this phase changes an outcome that already works — every deferred call is CRM _mirroring_,
+which is why the seam held for nine increments.
 
 ### Phase 10 — HTTP surface & backfills (~1,500 lines)
 
