@@ -20,9 +20,13 @@ forced them are the expensive part to rediscover.
 - **Behaviour is preserved over tidiness.** Where the source does something surprising, the port
   pins it with a test and records _why_ on the function. The bar for changing behaviour is not "this
   looks wrong" but "this does not do what it _says_ it does" — see the bug-fix section.
-- **A phase's own tests are suspect too.** Six increments so far had a failing test whose FIXTURE was
+- **A phase's own tests are suspect too.** Seven increments so far had a failing test whose FIXTURE was
   invented rather than read from the source or the ported helper. Check which of the two is wrong
   before touching either.
+- **A mock that does not honour its real contract makes a test that proves nothing.** `generateText`
+  MUTATES the caller's message list (`messages.push(cleaned)` is the documented loop contract); a plain
+  value mock produced a history the loop never sees in production, and a passing test that asserted
+  nothing. When mocking a collaborator, port its side effects too, not just its return value.
 
 ## Status
 
@@ -47,12 +51,12 @@ forced them are the expensive part to rediscover.
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b¹   | Task + lifecycle tools                            | ~776         | `4129a45` |
 | 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | `c30f9a3` |
-| 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | —         |
+| 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | PENDING   |
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,347 tests / 30 suites**, `tsc` and `eslint` clean.
+Current: **1,374 tests / 31 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -227,10 +231,15 @@ inbound channel tools only, so a pure outbound agent is told "Enabled outbound m
 while also being told it MUST call one every response — and neither channel switch has an `email`
 branch. Ported verbatim with a test pinning the wording.
 
-#### 8b³ — the tool-dispatch loop (~1,370 lines)
+#### 8b³ — the tool-dispatch loop (~1,370 lines) — ✅ DONE
 
-`with_tools` itself. Needs 8b¹ and 8b² in place, and every tool it dispatches to — which is why the
-tool registry inverted the source's direct imports back in Phase 8a.
+`with_tools` itself, the largest single function in the source.
+
+**Ported as a dispatch TABLE, not the source's 96-branch `elif` chain** — about 85 of those branches
+call inbound tools out of scope for this port, so reproducing the chain would mean porting or stubbing
+them. Unknown names take the source's own "not implemented by this runtime" fallthrough, so an inbound
+tool leaked in by an agent config behaves identically. The table holds ten tools today and grows as
+tools land, which is what the Phase 8a registry inversion was for.
 
 #### 8b⁴ — the turn entry and the cron hookup (~1,105 lines)
 

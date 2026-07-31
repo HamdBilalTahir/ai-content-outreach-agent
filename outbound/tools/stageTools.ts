@@ -160,7 +160,9 @@ async function cancelPendingFollowups(chatId: string): Promise<number> {
 
 export interface StageToolMeta {
   agent_id?: string;
-  company_id?: string;
+  // Widened to match the turn's meta shape: the source reads this loosely and stringifies it, so a
+  // numeric company id from an older record must not be a type error at the call site.
+  company_id?: string | number;
   [k: string]: unknown;
 }
 
