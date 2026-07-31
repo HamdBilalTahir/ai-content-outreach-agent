@@ -20,7 +20,7 @@ forced them are the expensive part to rediscover.
 - **Behaviour is preserved over tidiness.** Where the source does something surprising, the port
   pins it with a test and records _why_ on the function. The bar for changing behaviour is not "this
   looks wrong" but "this does not do what it _says_ it does" — see the bug-fix section.
-- **A phase's own tests are suspect too.** Seven increments so far had a failing test whose FIXTURE was
+- **A phase's own tests are suspect too.** Eight increments so far had a failing test whose FIXTURE was
   invented rather than read from the source or the ported helper. Check which of the two is wrong
   before touching either.
 - **A mock that does not honour its real contract makes a test that proves nothing.** `generateText`
@@ -52,11 +52,11 @@ forced them are the expensive part to rediscover.
 | 8b¹   | Task + lifecycle tools                            | ~776         | `4129a45` |
 | 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | `c30f9a3` |
 | 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | `c5219b9` |
-| 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | —         |
+| 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | PENDING   |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,374 tests / 31 suites**, `tsc` and `eslint` clean.
+Current: **1,410 tests / 32 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -241,10 +241,22 @@ them. Unknown names take the source's own "not implemented by this runtime" fall
 tool leaked in by an agent config behaves identically. The table holds ten tools today and grows as
 tools land, which is what the Phase 8a registry inversion was for.
 
-#### 8b⁴ — the turn entry and the cron hookup (~1,105 lines)
+#### 8b⁴ — the turn entry and the cron hookup (~1,105 lines) — ✅ DONE
 
-`call_llm_outbound.py` plus `run_outbound_llm`, which finally fills the cron's injected `runTurn`
-parameter — the last open seam apart from Phase 9's HubSpot slot resolver.
+`call_llm_outbound.py`'s outbound turn assembly plus `run_outbound_llm`. **The cron's `runTurn` now
+defaults to the real implementation** — that seam is closed, leaving only Phase 9's HubSpot slot
+resolver open.
+
+Ported framework-free: the source fuses the turn logic into a DRF view and then invokes that view
+in-process through a request shim. Here the logic is a function, the cron calls it directly, and Phase
+10's route is a thin adapter — the shim disappears.
+
+The inbound halves are NOT ported: WhatsApp/Unipile/Twilio account resolution, attachment analysis, the
+VIN protocol, appraisal confirmed-fields, the inbound SMS local scope, per-vehicle windowing, the TCPA
+gate, and the notification-engine escalation gate. None has an outbound code path.
+
+**Phase 8b is complete.** The turn engine runs end to end: helpers (8b²) → dispatch loop (8b³) → turn
+entry (8b⁴), with the tools it dispatches to from 8b¹.
 
 **Arrives with this phase:**
 
@@ -291,24 +303,24 @@ path while the outbound app mounts its own equivalent (see `CONVERSATION_INIT_PA
 
 Every function knowingly absent from the port, and where it lands. Nothing else is missing.
 
-| Deferred                                 | Out of | Into | Blocked on                                          |
-| ---------------------------------------- | ------ | ---- | --------------------------------------------------- |
-| `chat.ensureMeetingHost`                 | 3      | 9    | `hubspot.resolveHubspotConfig`, `resolveOwnerName`  |
-| ~~`chat.finalizeUnresolvedCall`~~        | 3      | 5 ✅ | landed early — deps arrived in Phase 4/5            |
-| ~~`chat.reconcileStalePendingCalls`~~    | 3      | 5 ✅ | landed early, same reason                           |
-| `callScope` (voice-prompt half)          | 2      | 7    | voice prompt assembly                               |
-| `reputation.emailDailySummary`           | 4      | 6    | `sendgridMail.resolveSendgridConfig`                |
-| `conversationSummary`                    | 5      | 8    | `llm.ask.generateText`                              |
-| enroll's 6 HubSpot stamps                | 5      | 9    | `services/hubspot`                                  |
-| `cron` email daily summary               | 5      | 6    | `sendgridMail.resolveSendgridConfig`                |
-| `cron` turn runner (injected)            | 5      | 8    | `llm.run.runOutboundLlm` — a parameter, not absent  |
-| `resolveAudiencePage` HubSpot sources    | 5      | 9    | HubSpot contact-fetch layer                         |
-| review's `resolveBookingSlot` (injected) | 7b²b²  | 9    | `hubspot.getHubspotSlots` — a parameter, not absent |
-| review's `maybeAddDealConversationNote`  | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
-| review's `preservePriorEmailOnContact`   | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
-| review's `syncHubspotStage`              | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
-| `fetchCallFromVapi`                      | 7b²b²  | —    | unreachable: no Vapi dialer exists in this port     |
-| provisioner's `getToolsForAgent`         | 7b²c   | —    | inbound tools-mapper; best-effort in the source     |
+| Deferred                                 | Out of | Into   | Blocked on                                               |
+| ---------------------------------------- | ------ | ------ | -------------------------------------------------------- |
+| `chat.ensureMeetingHost`                 | 3      | 9      | `hubspot.resolveHubspotConfig`, `resolveOwnerName`       |
+| ~~`chat.finalizeUnresolvedCall`~~        | 3      | 5 ✅   | landed early — deps arrived in Phase 4/5                 |
+| ~~`chat.reconcileStalePendingCalls`~~    | 3      | 5 ✅   | landed early, same reason                                |
+| `callScope` (voice-prompt half)          | 2      | 7      | voice prompt assembly                                    |
+| `reputation.emailDailySummary`           | 4      | 6      | `sendgridMail.resolveSendgridConfig`                     |
+| `conversationSummary`                    | 5      | 8      | `llm.ask.generateText`                                   |
+| enroll's 6 HubSpot stamps                | 5      | 9      | `services/hubspot`                                       |
+| `cron` email daily summary               | 5      | 6      | `sendgridMail.resolveSendgridConfig`                     |
+| ~~`cron` turn runner (injected)~~        | 5      | 8b⁴ ✅ | closed — defaults to `runOutboundLlm`, still overridable |
+| `resolveAudiencePage` HubSpot sources    | 5      | 9      | HubSpot contact-fetch layer                              |
+| review's `resolveBookingSlot` (injected) | 7b²b²  | 9      | `hubspot.getHubspotSlots` — a parameter, not absent      |
+| review's `maybeAddDealConversationNote`  | 7b²b²  | 9      | `services/hubspot` — best-effort in the source           |
+| review's `preservePriorEmailOnContact`   | 7b²b²  | 9      | `services/hubspot` — best-effort in the source           |
+| review's `syncHubspotStage`              | 7b²b²  | 9      | `services/hubspot` — best-effort in the source           |
+| `fetchCallFromVapi`                      | 7b²b²  | —      | unreachable: no Vapi dialer exists in this port          |
+| provisioner's `getToolsForAgent`         | 7b²c   | —      | inbound tools-mapper; best-effort in the source          |
 
 ## Deliberate divergences from the source
 

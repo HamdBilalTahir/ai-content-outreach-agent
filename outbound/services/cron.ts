@@ -75,6 +75,7 @@ import {
 } from './chat';
 import { maxTasksPerTick, stalledSweepMax, taskLookbackMin } from '../config';
 import { OUTREACH_TASK_TYPES, type DueTask, type TaskDoc } from '../types';
+import { runOutboundLlm } from '../llm/turn';
 
 const OUTREACH_TASK_TYPE_SET: ReadonlySet<string> = new Set(
   OUTREACH_TASK_TYPES
@@ -290,15 +291,18 @@ export interface CronResult {
 
 export interface CronOptions {
   window?: number;
-  /** Supplied by the LLM phase. See the module docstring. */
-  runTurn: TurnRunner;
+  /**
+   * Defaults to the real turn runner (`runOutboundLlm`). Still injectable, which is what keeps the
+   * cron's own tests from driving a live model — the seam earned its keep and stays.
+   */
+  runTurn?: TurnRunner;
 }
 
 /** Run all due outbound tasks within the window, and advance every campaign sweep once per tick. */
 export async function processOutboundTasks(
   opts: CronOptions
 ): Promise<CronResult> {
-  const { window = 2, runTurn } = opts;
+  const { window = 2, runTurn = runOutboundLlm } = opts;
 
   await advanceEnrollingCampaigns();
   await advancePausingCampaigns();

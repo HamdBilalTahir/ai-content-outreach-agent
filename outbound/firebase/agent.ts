@@ -415,3 +415,73 @@ export async function getVoiceAgentConfig(agentId: string): Promise<{
     return null;
   }
 }
+
+/**
+ * Assemble an agent's system prompt from its four Firestore sections.
+ *
+ * The four headed sections (`PERSONA OF AI AGENT`, `ROLES AND RESPONSIBILITIES`, `GUARDRAILS`,
+ * `ADDITIONAL INSTRUCTIONS`) are emitted even when empty — the headings are part of the contract the
+ * prompts are written against, so dropping empty ones would change what every agent sees.
+ *
+ * Two inheritance rules, both recursive:
+ *  - An **oversee agent** with any section of its own uses it; with ALL four empty it inherits its
+ *    parent's prompt wholesale. Empty-and-parentless still returns the bare section skeleton, not null,
+ *    so a misconfigured agent gets a valid (if useless) prompt rather than a crash.
+ *  - A **subagent** takes its lead agent's prompt and appends its own goal and workflow instructions.
+ *
+ * `null` only when the agent does not exist or the read fails.
+ */
+export async function getAgentPrompt(
+  agentId: string,
+  depth = 0
+): Promise<string | null> {
+  // Recursion is data-driven (parent_agent / lead_ai), so a misconfigured cycle must not hang a turn.
+  if (depth > 5) {
+    console.warn(`[OB] getAgentPrompt: inheritance too deep at ${agentId}`);
+    return null;
+  }
+  try {
+    const agent = await getAgent(agentId);
+    if (!agent) return null;
+
+    const sections = (a: DocumentData) =>
+      'PERSONA OF AI AGENT\n' +
+      `${a.persona ?? ''}` +
+      '\nROLES AND RESPONSIBILITIES\n' +
+      `${a.prompt ?? ''}` +
+      '\nGUARDRAILS\n' +
+      `${a.guardrails ?? ''}` +
+      '\nADDITIONAL INSTRUCTIONS\n' +
+      `${a.additional_instructions ?? ''}`;
+
+    if (agent.oversee_agent === true) {
+      const hasOwn = !!(
+        agent.persona ||
+        agent.prompt ||
+        agent.guardrails ||
+        agent.additional_instructions
+      );
+      if (hasOwn) return sections(agent);
+      const parentId = String(agent.parent_agent ?? '');
+      if (parentId) return getAgentPrompt(parentId, depth + 1);
+      return sections(agent);
+    }
+
+    if (agent.type === 'subagent') {
+      const leadPrompt =
+        (await getAgentPrompt(String(agent.lead_ai ?? ''), depth + 1)) ?? '';
+      return (
+        `${leadPrompt}` +
+        '\nIMPORTANT: BASED ON ABOVE, RUN FOLLOWING WORKFLOW WITHOUT ERRORS. GOAL IS\n' +
+        `${agent.goals ?? ''}\n` +
+        'INSTRUCTIONS TO RUN WORKFLOW\n' +
+        `${agent.instructions ?? ''}`
+      );
+    }
+
+    return sections(agent);
+  } catch (e) {
+    console.log(`Error getting agent prompt: ${e}`);
+    return null;
+  }
+}
