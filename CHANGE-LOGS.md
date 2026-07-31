@@ -6,6 +6,28 @@
 
 ---
 
+> ### Outbound agent port — Phase 7b²a: the call tool
+>
+> - **What changed:** Ported `tools/make_phone_call.py` — the outbound voice dial — as `outbound/tools/makePhoneCall.ts`, with its four-gate chain, the dial payload assembly, and the post-dial bookkeeping. Registers itself with the model layer's tool registry.
+> - **Why the gate ORDER is the design, not incidental.** Four gates run before anything is dialed, each cheaper or more terminal than the next:
+>   1. **Phone opt-out** — terminal `blocked`, no retry task, and **never bypassed**. Consent is not a pacing concern.
+>   2. **Business hours** — DEFERS rather than dropping: schedules a retry at the next business morning and surfaces the reason in both the task notes and the tool result, so the agent re-attempts in-hours instead of the model deciding to cold-call at 2am local.
+>   3. **The per-chat dial guard** — the structural stop for the repeat-dial storm. Placed BEFORE scope-building, so a refusal wastes no scope work.
+>   4. **The voice concurrency cap** — reserved LAST, because it is the only gate that consumes a resource.
+>
+>   **The bypasses are narrow and consistent:** a `Test` record and a human `@ai` override bypass the two PACING gates; `Test` also bypasses business hours; neither ever bypasses opt-out. And `isHotProspect` bypasses **nothing** — the source records that the old count-then-write cap let hot prospects through and that two concurrent dials raced past it, so the cap is now absolute and an engaged prospect is called sooner by being _scheduled_ sooner.
+>
+>   **Slot accounting is directional:** a live call keeps its slot until the completion webhook (or the TTL sweep); a FAILED dial releases immediately, because otherwise a failure would hold capacity until the TTL expires.
+>
+> - **Files:**
+>   - `outbound/tools/makePhoneCall.ts`
+>   - `outbound/__tests__/tools/makePhoneCall.test.ts`
+> - **Verification:** 1,054 tests across 24 suites (37 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+> - **The gate order was confirmed by a test failure, and that is worth recording.** Five tests for gates 3 and 4 failed with `deferred` instead of their expected status: with a `Real` record, the clock-dependent business-hours gate fired first and the pacing gates were never reached. That is CORRECT — a `Real` record outside the window genuinely cannot reach them — so rather than weaken the assertions I mocked `checkBusinessHours` to report "inside hours" by default, which isolates each gate, and added an explicit test that an out-of-hours chat which is ALSO inside the dial-recency floor defers on hours and reserves no slot. The ordering is now asserted directly instead of being an accident of the test clock.
+> - **Deferred:** the **Vapi provider path** is not ported. Note the source defaults `voice_ai_provider` to `"vapi"`, so this is a behaviour change for a Vapi-configured agent — it now returns a `failed` result **naming the unsupported provider** rather than silently doing nothing, which is diagnosable instead of an unexplained no-op. Also deferred: the HubSpot availability injection and `ensureMeetingHost` (HubSpot phase), and `make_phone_call_from_number` plus the recording upload (with the rest of the voice phase).
+>
+> ---
+>
 > ### Outbound agent port — Phase 7b¹: the review toolkit, and three deferrals closed
 >
 > - **What changed:** Ported the LLM-analysis toolkit the review tools share, and used it to close three open deferrals in one go.
