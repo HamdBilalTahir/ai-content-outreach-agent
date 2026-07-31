@@ -46,13 +46,13 @@ forced them are the expensive part to rediscover.
 | 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | `6a78220` |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b¹   | Task + lifecycle tools                            | ~776         | `4129a45` |
-| 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | —         |
+| 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | PENDING   |
 | 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | —         |
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,306 tests / 29 suites**, `tsc` and `eslint` clean.
+Current: **1,347 tests / 30 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -216,10 +216,16 @@ natural seams rather than file boundaries:
 The leaves: six tools the dispatch loop calls. Independent of the loop, so they land first. Fixed a
 fail-open gate the port had inverted; see the bug-fix section.
 
-#### 8b² — the helpers, guardrails, and prompt injection (~370 lines)
+#### 8b² — the helpers, guardrails, and prompt injection (~370 lines) — ✅ DONE
 
-`run.py`'s pure functions ahead of `with_tools`: provider resolution, the backend-guardrails builder,
-the vehicle-summary and Groq tool-use-policy injections, and the tool-result helpers.
+`run.py`'s functions ahead of `with_tools`: provider resolution, the two system-prompt injections, the
+terminal-block kill switch, and the toolResult plumbing. The vehicle-summary injection is NOT ported —
+it reads inbound `appraisals` and is gated on an inbound-only tool, so it could never produce output.
+
+**Open question raised here, needing evals rather than a port decision:** the guardrail block enumerates
+inbound channel tools only, so a pure outbound agent is told "Enabled outbound messaging tools: none"
+while also being told it MUST call one every response — and neither channel switch has an `email`
+branch. Ported verbatim with a test pinning the wording.
 
 #### 8b³ — the tool-dispatch loop (~1,370 lines)
 

@@ -6,6 +6,22 @@
 
 ---
 
+> ### Outbound agent port — Phase 8b²: the turn engine's helper layer
+>
+> - **What changed:** Ported `llm/run.py`'s helper layer — everything ahead of the dispatch loop — as `outbound/llm/turnHelpers.ts` (~370 source lines): the two system-prompt injections, provider resolution for a turn, the terminal-block kill switch, and the toolResult plumbing.
+> - **Both prompt injections are idempotent and PREPEND, and both matter.** Each block is added only if its header is not already present, so re-entering a turn cannot stack a second copy of the guardrails. They go at the FRONT because they are non-negotiable — a prompt cannot override an instruction it has not reached yet. The tool lists inside them are SORTED, which is not cosmetic: an unordered set would change the prompt prefix every turn and lose prompt caching. Tests pin idempotence, position, and stability under reordered input.
+> - **A contradiction in the guardrail text, ported verbatim and flagged rather than fixed.** `OUTBOUND_MESSAGE_TOOL_NAMES` is a set of WhatsApp, web, and SMS tool names — "outbound" there means *agent-to-customer*, not "the outbound product". None of them exist in this port, whose customer-facing tools are `send_email` and the voice dial. So a pure outbound agent gets a block that says "Enabled outbound messaging tools: **none**" while also insisting the model MUST call one for every response. There is also no `email` branch in either channel switch, so an outbound email turn takes the generic hint. Prompt text drives model behaviour in ways the code cannot tell me, so rewriting it mid-port would be changing the product's voice on a guess — it needs evals and a deliberate decision. A test asserts the current wording so the change is visible when someone makes it.
+> - **`stampEmailOutcomeOnToolCall` looks redundant until you know why it exists.** It copies a send outcome from the toolResult back onto the assistant's `toolUse` **input**. The messages-based inbox transformer reads each tool-call document in ISOLATION — it sees `toolUse.input` and never the paired toolResult — so without this stamp every attempted email renders as delivered, including the ones that deferred, were blocked, or failed. Tested with a deferred send specifically, plus that an explicit `email_label` is filled in rather than overwritten, and that the search stops at the LATEST matching turn.
+> - **`appendToolResultMessage` groups on purpose.** Bedrock requires toolResult blocks to follow their toolUse immediately, so several tools called in one assistant turn must come back as ONE user message; appending them separately produces a history the provider rejects.
+> - **Two deliberate fail-safe defaults.** `terminalBlockShortcircuitEnabled` treats ONLY the explicit off-values as off, so a typo leaves the optimization on instead of silently reverting behaviour (tested with five typos). `extractToolStatusAndMessage` returns `['', '']` — a non-verdict — for anything malformed, because the dispatch loop reads it to decide whether a tool terminally blocked and a bad payload must not crash the turn mid-flight; ten malformed shapes are asserted.
+> - **One helper deliberately NOT ported.** `_inject_vehicle_summary` reads a chat's `appraisals` subcollection and is gated on the `switch_to_next_vehicle` tool. Both are inbound-only — outbound chats have no appraisals and that tool is not in this port — so the injection could never produce output. Recorded rather than ported dead, consistent with the dealer-analytics divergence from Phase 1. `_safe_int_env` is already `config.envInt`.
+> - **Files:**
+>   - `outbound/llm/turnHelpers.ts`
+>   - `outbound/__tests__/llm/turnHelpers.test.ts`
+> - **Verification:** 1,347 tests across 30 suites (41 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 8b¹: the task and lifecycle tools
 >
 > - **What changed:** Ported the six tools the turn engine dispatches to, as `outbound/tools/taskTools.ts` (`create_custom_task`, `update_custom_task`, `delete_custom_task`) and `outbound/tools/stageTools.ts` (`mark_prospect_lost`, `mark_cadence_complete`, `clear_not_interested`) — ~776 source lines. These are the leaves of Phase 8b: the agent uses them to schedule its own next touch and to close prospects, so they land before the dispatch loop that calls them.
