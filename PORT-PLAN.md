@@ -41,7 +41,7 @@ forced them are the expensive part to rediscover.
 | 6     | Email send path (choke point)                     | ~660         | `4a0ef4d` |
 | 6b¹   | Send tool, text contracts, reinit ladder          | ~750         | `8c0e61a` |
 | 6b²a  | Email compliance (SendGrid events, unsubscribe)   | ~278         | `5871c96` |
-| 6b²b  | Inbound email-reply webhook handler               | ~471         | PENDING   |
+| 6b²b  | Inbound email-reply webhook handler               | ~471         | `8185ea3` |
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
