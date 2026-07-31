@@ -40,7 +40,7 @@ forced them are the expensive part to rediscover.
 | 5     | Campaign lifecycle                                | ~2,050       | `c725948` |
 | 6     | Email send path (choke point)                     | ~660         | `4a0ef4d` |
 | 6b¹   | Send tool, text contracts, reinit ladder          | ~750         | `8c0e61a` |
-| 6b²a  | Email compliance (SendGrid events, unsubscribe)   | ~278         | PENDING   |
+| 6b²a  | Email compliance (SendGrid events, unsubscribe)   | ~278         | `5871c96` |
 | 6b²b  | Inbound email-reply webhook handler               | ~471         | —         |
 | 7a    | Voice foundation                                  | ~470         | `3711843` |
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
