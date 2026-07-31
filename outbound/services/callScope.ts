@@ -193,8 +193,13 @@ function formatMeetingWhen(mem: ChatMemory | null | undefined): string {
   }
 }
 
-/** Prior calls placed and email subjects sent on THIS chat, from its message history. Best-effort. */
-async function scanPriorInteractions(
+/**
+ * Prior calls placed and email subjects sent on THIS chat, from its message history. Best-effort.
+ *
+ * Exported for the review tool, which reports `voice_attempts` from the same count the scope block
+ * shows the agent — so the skill's "1st voicemail vs 2nd" branch and the prompt agree.
+ */
+export async function scanPriorInteractions(
   chatId: string | null | undefined
 ): Promise<{ calls: number; emailSubjects: string[] }> {
   let calls = 0;

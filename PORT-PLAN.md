@@ -37,13 +37,14 @@ that forced them are the expensive part to rediscover.
 | 7b¹   | Review toolkit (LLM analysis helpers)             | ~600         | `17c4817` |
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
 | 7b²b¹ | Post-call classifiers + review actions            | ~470         | `366bd09` |
-| 7b²b² | review orchestrator, EL agent svc, voice views    | ~1,985       | —         |
+| 7b²b² | Review orchestrator (`review_call_transcript`)     | ~700         | PENDING   |
+| 7b²c  | EL agent service, voice views, dial-by-number     | ~1,285       | —         |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,099 tests / 25 suites**, `tsc` and `eslint` clean.
+Current: **1,155 tests / 26 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -202,6 +203,11 @@ Every function knowingly absent from the port, and where it lands. Nothing else 
 | `cron` email daily summary            | 5      | 6    | `sendgridMail.resolveSendgridConfig`               |
 | `cron` turn runner (injected)         | 5      | 8    | `llm.run.runOutboundLlm` — a parameter, not absent |
 | `resolveAudiencePage` HubSpot sources | 5      | 9    | HubSpot contact-fetch layer                        |
+| review's `resolveBookingSlot` (injected) | 7b²b² | 9 | `hubspot.getHubspotSlots` — a parameter, not absent |
+| review's `maybeAddDealConversationNote` | 7b²b² | 9    | `services/hubspot` — best-effort in the source      |
+| review's `preservePriorEmailOnContact` | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
+| review's `syncHubspotStage`           | 7b²b²  | 9    | `services/hubspot` — best-effort in the source      |
+| `fetchCallFromVapi`                   | 7b²b²  | —    | unreachable: no Vapi dialer exists in this port      |
 
 ## Deliberate divergences from the source
 
@@ -240,6 +246,14 @@ exists to prevent, and invisible until an agent left `per_hour` unset on its Sen
 The source's own stated intent was the spec. That is the bar for changing behaviour: not "this looks
 wrong" but "this does not do what it says it does". A default that silently disagrees with the source
 is the same class of defect: the code does not do what the module it configures says it does.
+
+The review orchestrator (Phase 7b²b²) carries a latent defect the port cannot express rather than one
+it fixes. Its deal-note retry reads `agent_id`, a name Python only binds when `meta_data` carried one;
+otherwise the read raises `NameError` inside the function-wide handler — which skips booking, the
+callback, the stage advance, AND the idempotency stamp, after every earlier side effect has already
+run. That last part is what makes it costly: the chat is left mutated but unrecorded, so the next
+review re-runs the pipeline. The port resolves `agentId` once into a plain string, so the condition
+simply reads falsy; the failure mode has nowhere to live. Documented at the call site.
 
 ## Fail directions
 
