@@ -42,7 +42,7 @@ forced them are the expensive part to rediscover.
 | 7b²a  | make_phone_call (the call tool)                   | ~1,975       | `847c2a2` |
 | 7b²b¹ | Post-call classifiers + review actions            | ~470         | `366bd09` |
 | 7b²b² | Review orchestrator (`review_call_transcript`)    | ~700         | `3ed032f` |
-| 7b²c  | ElevenLabs agent provisioning                     | ~1,189       | PENDING   |
+| 7b²c  | ElevenLabs agent provisioning                     | ~1,189       | `cacf6b4` |
 | 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | —         |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
