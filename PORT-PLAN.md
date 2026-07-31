@@ -43,13 +43,13 @@ forced them are the expensive part to rediscover.
 | 7b²b¹ | Post-call classifiers + review actions            | ~470         | `366bd09` |
 | 7b²b² | Review orchestrator (`review_call_transcript`)    | ~700         | `3ed032f` |
 | 7b²c  | ElevenLabs agent provisioning                     | ~1,189       | `cacf6b4` |
-| 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | —         |
+| 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | PENDING   |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
 | 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,223 tests / 27 suites**, `tsc` and `eslint` clean.
+Current: **1,261 tests / 28 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -170,18 +170,21 @@ Phase 9, one of them (`resolveBookingSlot`) as an injected parameter rather than
 misalignment; collapsed two verbatim source duplications; flagged a conversation-init URL that points
 at the inbound app.
 
-#### 7b²d — the voice webhook handlers and dial-by-number (~500 lines)
+#### 7b²d — the voice webhook handlers and dial-by-number (~500 lines) — ✅ DONE
 
 `views/elevenlabs_webhook.py` (242) · `views/conversation_init_webhook.py` (207) ·
 `make_phone_call_from_number`
 
-**The four voice views split two ways, decided by reading their imports.** The two WEBHOOKS carry real
-domain logic — signature verification, persisting the transcript to `elevenlabs_conversations` (the
-document the review orchestrator prefers over a live re-fetch), and seeding per-caller context — so
-their handlers belong here as framework-free functions. `views/voice_settings.py` (150) and
-`views/voice_connect.py` (53) are thin admin CRUD over the provisioner and moved to **Phase 10**.
+Ported as framework-free handlers in `services/voiceWebhooks.ts`; the HTTP routes that call them are
+Phase 10. `views/voice_settings.py` (150) and `views/voice_connect.py` (53) are thin admin CRUD over the
+provisioner and were re-assigned to **Phase 10**.
 
-Everything the webhooks need exists except `enroll.resolveLocation`, which is already ported.
+`make_phone_call_from_number` became a thin wrapper rather than a second 373-line dialer — its own
+docstring states the contract ("same logic, hardcoded number") that the copy had drifted away from. See
+the bug-fix section.
+
+**This closes the voice phase.** Placement (7b²a), review (7b¹, 7b²b¹, 7b²b²), provisioning (7b²c), and
+both inbound event paths (7b²d) are all in.
 
 ### Phase 8a — the model layer (~1,400 lines) — ✅ DONE
 
@@ -302,6 +305,18 @@ exists to prevent, and invisible until an agent left `per_hour` unset on its Sen
 The source's own stated intent was the spec. That is the bar for changing behaviour: not "this looks
 wrong" but "this does not do what it says it does". A default that silently disagrees with the source
 is the same class of defect: the code does not do what the module it configures says it does.
+
+`make_phone_call_from_number` (Phase 7b²d) is the clearest case so far of the docstring being the spec
+and the code being the stale artifact. Its docstring says "Same logic as make_phone_call but uses a
+hardcoded phone number ID"; a normalized diff shows the copy had drifted behind the original by five
+things — `call_type`/`prospect_stage`, the meeting-host fact, voice skills, the HubSpot availability
+inject, and the oversee-agent deactivation check. Calls placed through it reached the prospect with less
+context and a deactivated oversee number was not blocked. The port implements the STATED contract as a
+wrapper, so the drift does not survive.
+
+Note this resolves the opposite way to the stale docstring in Phase 7b²c, where the code was newer than
+its comment and therefore won. The rule is not "comments win" or "code wins" — it is: work out which
+artifact is the later statement of intent, and say so on the function.
 
 `elevenlabsAgentService` (Phase 7b²c) built its knowledge-base result list by walking the **filtered**
 id list while indexing `sources[i]` for the name. The filter drops failed uploads — so the moment any

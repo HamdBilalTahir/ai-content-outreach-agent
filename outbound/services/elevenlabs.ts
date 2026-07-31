@@ -150,6 +150,45 @@ export async function attachOutboundPostCallWebhookToAgent(
   }
 }
 
+/**
+ * Fetch a conversation's RAW provider payload.
+ *
+ * Deliberately raw: callers need the provider's own shape (`analysis.transcript_summary`, the
+ * `transcript` turn array). The review tool's `fetchCallFromElevenlabs` is a different thing — it
+ * prefers the webhook-stored transcript and returns a normalized record. Do not conflate them: the
+ * webhook is what WRITES that stored transcript, so it must read from the provider directly.
+ *
+ * Lives here rather than in `tools/makePhoneCall` (where the source keeps it) so the webhook handlers
+ * do not have to import a tool module for a plain provider read.
+ */
+export async function fetchConversationFromElevenlabs(
+  conversationId: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    const resp = await fetch(
+      `${ELEVENLABS_BASE_API}/v1/convai/conversations/${conversationId}`,
+      {
+        method: 'GET',
+        headers: {
+          'xi-api-key': envStr('ELEVENLABS_API_KEY'),
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }
+    );
+    if (resp.status !== 200) {
+      console.error(
+        `ElevenLabs API error: ${resp.status} - ${await resp.text()}`
+      );
+      return null;
+    }
+    return (await resp.json()) as Record<string, unknown>;
+  } catch (e) {
+    console.error(`Error fetching conversation ${conversationId}: ${e}`);
+    return null;
+  }
+}
+
 /** Exposed for tests: the resolved webhook ids. */
 export const __testing = {
   outboundPostCallWebhookId,

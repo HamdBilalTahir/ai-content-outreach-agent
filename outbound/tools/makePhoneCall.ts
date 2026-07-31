@@ -430,11 +430,22 @@ export interface MakeCallMeta {
   [k: string]: unknown;
 }
 
+/**
+ * Internal knobs the `make_phone_call_from_number` variant sets. Not part of the tool contract.
+ */
+interface DialOptions {
+  /** Overrides whatever phone number id the agent routing resolved. */
+  phoneNumberIdOverride?: string;
+  /** Log prefix, so the two tools stay distinguishable in production logs. */
+  logTag?: string;
+}
+
 /** Run the `make_phone_call` tool. */
 export async function parseAndRunMakePhoneCall(
   toolUseId: string,
   input: MakeCallInput,
-  metaData: MakeCallMeta = {}
+  metaData: MakeCallMeta = {},
+  options: DialOptions = {}
 ): Promise<BedrockMessage> {
   const phoneNumber = toE164(input.phone_number);
   const chatOwnerAgentId = metaData.chat_owner_agent_id ?? metaData.agent_id;
@@ -535,6 +546,16 @@ export async function parseAndRunMakePhoneCall(
       string,
       unknown
     >;
+  }
+
+  // The from-number variant dials from a fixed provider number regardless of agent routing. Applied
+  // AFTER routing so the oversee-agent deactivation check above still runs — the source's variant
+  // skips that check entirely, which is part of the drift documented on the wrapper below.
+  if (options.phoneNumberIdOverride) {
+    voicePhoneNumberId = options.phoneNumberIdOverride;
+    console.log(
+      `${options.logTag ?? '[MAKE_PHONE_CALL]'} using the fixed from-number id: ${voicePhoneNumberId}`
+    );
   }
 
   if (!voiceAssistantId) {
@@ -900,4 +921,101 @@ export async function parseAndRunMakePhoneCall(
   }
 
   return buildToolResult(toolUseId, result);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The `make_phone_call_from_number` variant
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The fixed provider phone-number id this variant always dials from. */
+export const FROM_NUMBER_PHONE_NUMBER_ID = 'phnum_5501kgqkdm5hfkbt8s98aeq6a6ge';
+
+export const makePhoneCallFromNumberToolDescription = {
+  toolSpec: {
+    name: 'make_phone_call_from_number',
+    description:
+      'Make an outbound phone call to a customer using voice AI agent from a specific phone number. ' +
+      'The AI will have a voice conversation with the customer based on the provided instructions.',
+    inputSchema: {
+      json: {
+        type: 'object',
+        properties: {
+          phone_number: {
+            type: 'string',
+            description:
+              'The phone number to call (E.164 format, e.g., +1234567890)',
+          },
+          instructions: {
+            type: 'string',
+            description:
+              'The specific goal and purpose of this call. Do NOT include customer name or previously ' +
+              'confirmed details — those are added automatically from memory. Use this for the ' +
+              'high-level objective of the call (e.g., ‘book a demo’, ‘follow up on the proposal’) and ' +
+              'any special context like customer preferences or timing constraints. Can be empty for ' +
+              'first calls where the prompt has all needed context.',
+          },
+        },
+        required: ['phone_number'],
+      },
+    },
+  },
+} as const;
+
+registerTool(
+  makePhoneCallFromNumberToolDescription.toolSpec.name,
+  makePhoneCallFromNumberToolDescription
+);
+
+/**
+ * `make_phone_call`, but always dialing from one fixed provider number.
+ *
+ * ## Why this is a wrapper and not a copy — a deliberate behaviour change, with the reasoning
+ *
+ * The source implements this as a separate 373-line function whose docstring says "Same logic as
+ * make_phone_call but uses a hardcoded phone number ID". **That is not true.** It is a copy that was
+ * taken at some earlier point and then drifted behind the original, which grew to 480 lines. Diffing
+ * the two (normalizing log prefixes) shows the variant is missing:
+ *
+ *  - the `call_type` and `prospect_stage` dynamic variables, and the call-context branch that sets them
+ *  - the meeting-host fact injection
+ *  - the voice-skills injection (the `skills` dynamic variable)
+ *  - the HubSpot availability injection
+ *  - the oversee-agent phone-number deactivation check
+ *
+ * So a call placed through the variant reaches the prospect with materially less context than the same
+ * call placed through `make_phone_call`, and an oversee agent with a deactivated number is not blocked.
+ *
+ * The port's rule for changing behaviour is "the source does not do what it SAYS it does", and here the
+ * source states its contract explicitly in the docstring: same logic, different number. Implementing
+ * exactly that contract is what honours the stated intent; the drift is the defect. So this is a thin
+ * wrapper, and the variant gains the five things it had fallen behind on.
+ *
+ * Note this resolves the OPPOSITE way to the stale docstring in `elevenlabsAgentService`, and for the
+ * same reason: there the CODE was newer than its comment, so the code was the spec; here the comment
+ * describes the intended contract and the code is the stale artifact. The question is always which one
+ * is the later statement of intent.
+ *
+ * The one thing NOT inherited is the extra input validation: the variant requires `instructions` even
+ * though it never forwards the content anywhere (context is built from memory). That is a real contract
+ * the caller depends on, so it is preserved.
+ */
+export async function parseAndRunMakePhoneCallFromNumber(
+  toolUseId: string,
+  input: MakeCallInput & { instructions?: string },
+  metaData: MakeCallMeta = {}
+): Promise<BedrockMessage> {
+  // Preserved from the source: the oversee must still PASS instructions, even though the content is
+  // deliberately not forwarded into local_scope.
+  if (!input.instructions) {
+    console.error('Instructions are required');
+    return buildToolResult(toolUseId, {
+      status: 'failed',
+      message: 'Instructions are required',
+    });
+  }
+
+  return parseAndRunMakePhoneCall(toolUseId, input, metaData, {
+    phoneNumberIdOverride: FROM_NUMBER_PHONE_NUMBER_ID,
+    logTag: '[MAKE_PHONE_CALL_FROM_NUMBER]',
+  });
 }

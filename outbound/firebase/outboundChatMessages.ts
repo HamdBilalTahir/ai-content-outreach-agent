@@ -848,3 +848,64 @@ export async function recordActivitiesOnly(
     console.error(`[V3] recordActivitiesOnly failed for chat ${chatId}: ${e}`);
   }
 }
+
+/**
+ * Fill in a phone call's `messages_v3` card after the call completes.
+ *
+ * The card is written at PLACEMENT time with an empty summary and an `initiated` outcome, so without
+ * this update the conversation shows a call that never resolved. Matched by `content.callId`.
+ *
+ * `summary` and `recordingUrl` are only written when non-empty — a completion webhook that carries no
+ * transcript must not blank a summary a later review already filled in. A recording is also appended to
+ * `attachments`, deduped by url so a re-delivered webhook cannot double it.
+ *
+ * Returns whether a card was found and updated.
+ */
+export async function updateMessagesV3ForPhoneCall(
+  chatId: string,
+  conversationId: string,
+  summary: string,
+  recordingUrl: string,
+  outcome = 'completed'
+): Promise<boolean> {
+  try {
+    const snap = await chatRef(chatId)
+      .collection('messages_v3')
+      .where('content.callId', '==', conversationId)
+      .limit(1)
+      .get();
+
+    for (const doc of snap.docs) {
+      const update: Record<string, unknown> = { 'content.outcome': outcome };
+      if (summary) update['content.summary'] = summary;
+      if (recordingUrl) {
+        update['content.recordingUrl'] = recordingUrl;
+        const current = (doc.data() ?? {}) as Record<string, unknown>;
+        const attachments = [
+          ...((current.attachments ?? []) as Array<Record<string, unknown>>),
+        ];
+        if (!attachments.some((a) => a.url === recordingUrl)) {
+          attachments.push({
+            type: 'audio',
+            caption: 'Call recording',
+            url: recordingUrl,
+          });
+          update.attachments = attachments;
+        }
+      }
+      await doc.ref.update(update);
+      console.log(
+        `[V3] Updated messages_v3 doc ${doc.id} with call completion (outcome=${outcome})`
+      );
+      return true;
+    }
+
+    console.log(
+      `[V3] No messages_v3 doc found for call ${conversationId} in chat ${chatId}`
+    );
+    return false;
+  } catch (e) {
+    console.error(`[V3] updateMessagesV3ForPhoneCall failed: ${e}`);
+    return false;
+  }
+}

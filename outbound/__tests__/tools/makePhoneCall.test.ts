@@ -34,10 +34,12 @@ jest.mock('../../services/businessHours', () => {
 
 import { store } from '../../testSupport/mockFirestore';
 import {
+  FROM_NUMBER_PHONE_NUMBER_ID,
   buildToolResult,
   isHotProspect,
   isTestRecord,
   parseAndRunMakePhoneCall,
+  parseAndRunMakePhoneCallFromNumber,
   toE164,
   voiceBusinessHoursGate,
 } from '../../tools/makePhoneCall';
@@ -819,5 +821,75 @@ describe('buildToolResult', () => {
     const res = buildToolResult('tu1', { status: 'ok' });
     expect(res.role).toBe('user');
     expect(payloadOf(res)).toEqual({ status: 'ok' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The `make_phone_call_from_number` variant
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('make_phone_call_from_number', () => {
+  /** The dial payload the provider actually received. */
+  function dialBody(): Record<string, unknown> {
+    const call = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes('/twilio/outbound-call')
+    );
+    return call ? JSON.parse(call[1].body as string) : {};
+  }
+
+  test('requires instructions even though the content is never forwarded', async () => {
+    // A real contract the caller depends on, preserved from the source. Context comes from memory, so
+    // the STRING is unused — but its absence is still a hard failure.
+    const r = payloadOf(
+      await parseAndRunMakePhoneCallFromNumber(
+        'tu1',
+        { phone_number: PHONE },
+        { agent_id: AGENT, chat_id: CHAT }
+      )
+    );
+    expect(r.status).toBe('failed');
+    expect(r.message).toBe('Instructions are required');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('dials from the FIXED number, overriding the agent’s configured one', async () => {
+    seedAgent({ voice_settings: { phoneNumberId: 'phnum_agent_own' } });
+    await parseAndRunMakePhoneCallFromNumber(
+      'tu1',
+      { phone_number: PHONE, instructions: 'book a demo' },
+      { agent_id: AGENT, chat_id: CHAT }
+    );
+    expect(dialBody().agent_phone_number_id).toBe(FROM_NUMBER_PHONE_NUMBER_ID);
+  });
+
+  test('inherits the full context the source variant had drifted behind on', async () => {
+    // The source's copy was missing call_type, prospect_stage, the meeting-host fact, voice skills, and
+    // the availability inject. Its own docstring says "same logic as make_phone_call", so the wrapper
+    // implements that stated contract and the drift does not survive the port.
+    await parseAndRunMakePhoneCallFromNumber(
+      'tu1',
+      { phone_number: PHONE, instructions: 'book a demo' },
+      { agent_id: AGENT, chat_id: CHAT }
+    );
+    const clientData = dialBody().conversation_initiation_client_data as Record<
+      string,
+      unknown
+    >;
+    const vars = clientData.dynamic_variables as Record<string, unknown>;
+    expect(vars.call_type).toBeDefined();
+    expect(vars.prospect_stage).toBeDefined();
+  });
+
+  test('the opt-out gate still applies — it is not a pacing concern', async () => {
+    seedChat({ phone_opt_out: true });
+    const r = payloadOf(
+      await parseAndRunMakePhoneCallFromNumber(
+        'tu1',
+        { phone_number: PHONE, instructions: 'book a demo' },
+        { agent_id: AGENT, chat_id: CHAT }
+      )
+    );
+    expect(r.status).toBe('blocked');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
