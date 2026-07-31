@@ -45,11 +45,14 @@ forced them are the expensive part to rediscover.
 | 7b²c  | ElevenLabs agent provisioning                     | ~1,189       | `cacf6b4` |
 | 7b²d  | Voice webhook handlers, dial-by-number            | ~500         | `6a78220` |
 | 8a    | Model layer (`llm/ask`, provider, registry)       | ~1,400       | `64b5276` |
-| 8b    | Turn engine (`llm/run`, call_llm_outbound, tools) | ~3,000       | —         |
+| 8b¹   | Task + lifecycle tools                            | ~776         | PENDING   |
+| 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | —         |
+| 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | —         |
+| 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | —         |
 | 9     | HubSpot / CRM                                     | ~2,700       | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,261 tests / 28 suites**, `tsc` and `eslint` clean.
+Current: **1,306 tests / 29 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -198,11 +201,35 @@ inverts that: each tool calls `registerTool` at module load, and `llm/toolRegist
 thing the model layer knows. So a tool becomes available the moment it is ported, with no edit to the
 model layer. `send_email` is registered; every later tool should do the same in its own module.
 
-### Phase 8b — the turn engine (~3,000 lines)
+### Phase 8b — the turn engine (~3,620 lines)
 
 `llm/run.py` (1,892) · `call_llm_outbound.py` (1,105) · the task/stage tools
 (`create_custom_task` 260, `update_custom_task` 120, `delete_custom_task` 57,
 `mark_prospect_lost` 180, `mark_cadence_complete` 103, `clear_not_interested` 56)
+
+**Split four ways.** Surveying first showed the bulk is TWO enormous functions — `with_tools` is a
+single 1,370-line dispatch loop and `OutboundCallLLMView.post` is ~1,030 — so the split follows the
+natural seams rather than file boundaries:
+
+#### 8b¹ — the task and lifecycle tools (~776 lines) — ✅ DONE
+
+The leaves: six tools the dispatch loop calls. Independent of the loop, so they land first. Fixed a
+fail-open gate the port had inverted; see the bug-fix section.
+
+#### 8b² — the helpers, guardrails, and prompt injection (~370 lines)
+
+`run.py`'s pure functions ahead of `with_tools`: provider resolution, the backend-guardrails builder,
+the vehicle-summary and Groq tool-use-policy injections, and the tool-result helpers.
+
+#### 8b³ — the tool-dispatch loop (~1,370 lines)
+
+`with_tools` itself. Needs 8b¹ and 8b² in place, and every tool it dispatches to — which is why the
+tool registry inverted the source's direct imports back in Phase 8a.
+
+#### 8b⁴ — the turn entry and the cron hookup (~1,105 lines)
+
+`call_llm_outbound.py` plus `run_outbound_llm`, which finally fills the cron's injected `runTurn`
+parameter — the last open seam apart from Phase 9's HubSpot slot resolver.
 
 **Arrives with this phase:**
 
@@ -305,6 +332,14 @@ exists to prevent, and invisible until an agent left `per_hour` unset on its Sen
 The source's own stated intent was the spec. That is the bar for changing behaviour: not "this looks
 wrong" but "this does not do what it says it does". A default that silently disagrees with the source
 is the same class of defect: the code does not do what the module it configures says it does.
+
+The channel gate in `create_custom_task` (Phase 8b¹) is a bug the PORT introduced and its own test
+caught, worth recording because the mechanism will recur. The source reads `if _doc and not
+task_channel_open(...)`, and `load_chat_doc` returns `{}` for a missing chat AND for a read failure —
+`{}` being FALSY in Python is exactly what makes the gate fail OPEN. A JS `{}` is truthy, so the direct
+translation fired the gate on an unreadable doc and refused to schedule anything, turning a documented
+fail-open into fail-closed: a Firestore blip would have stalled every cadence while reporting a clean
+`skipped`. Any Python `if some_dict:` guard is a fail-direction decision, not a null check.
 
 `make_phone_call_from_number` (Phase 7b²d) is the clearest case so far of the docstring being the spec
 and the code being the stale artifact. Its docstring says "Same logic as make_phone_call but uses a

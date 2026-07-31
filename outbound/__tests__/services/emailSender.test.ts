@@ -21,6 +21,20 @@
 jest.mock('../../firebase/db', () =>
   require('../../testSupport/mockFirestore').mockDbModule()
 );
+// G0b business-hours is CLOCK-DEPENDENT, and because it sits before the consuming gates a `Real`
+// record outside the window can never REACH them — so on a weekend four of the tests below were
+// asserting `domain_budget` while the real answer was `outside_business_hours`. The gate order is
+// correct and is asserted explicitly in its own test; to exercise the consuming gates at all, the
+// check has to be controlled, so it reports "inside hours" by default.
+jest.mock('../../services/businessHours', () => {
+  const actual = jest.requireActual('../../services/businessHours');
+  return {
+    ...actual,
+    checkBusinessHours: jest
+      .fn()
+      .mockReturnValue({ timezone: null, localTime: null, wasFallback: false }),
+  };
+});
 // The transport is the one thing we never exercise for real.
 jest.mock('../../services/sendgridMail', () => {
   const actual = jest.requireActual('../../services/sendgridMail');
@@ -52,6 +66,7 @@ import {
 } from '../../services/emailSender';
 import { sendEmailViaSendgrid } from '../../services/sendgridMail';
 import { verify } from '../../services/verification';
+import { checkBusinessHours } from '../../services/businessHours';
 import { suppress } from '../../services/suppression';
 import { BUDGET_COLLECTION, SEND_LOG } from '../../services/reputation';
 import type { ChatMemory } from '../../types';
@@ -102,6 +117,12 @@ beforeEach(() => {
   (verify as jest.Mock).mockResolvedValue({
     result: 'valid',
     detail: 'mx-pass',
+  });
+  // clearAllMocks wipes the implementation the module factory set, so restore "inside hours" here.
+  (checkBusinessHours as jest.Mock).mockReturnValue({
+    timezone: null,
+    localTime: null,
+    wasFallback: false,
   });
   store.set('agents/agentA', { sales_agent_name: 'Nova' });
   store.set(`chats/${CHAT}`, {
@@ -359,6 +380,44 @@ describe('deferrals always have an owner', () => {
     await sendEmail(a);
     await sendEmail(a);
     expect(store.collection(`chats/${CHAT}/tasks`)).toHaveLength(1);
+  });
+});
+
+describe('G0b — business hours sits between the address gates and the consumers', () => {
+  it('an after-hours send DEFERS and burns neither a bucket token nor domain budget', async () => {
+    // Drives the gate explicitly rather than relying on the wall clock. `timezone !== null` is what
+    // the module reads as "outside the window".
+    // NOT mockReturnValueOnce: a Test record never consults this gate, so an unconsumed `Once`
+    // survives clearAllMocks (which drops calls, not queued implementations) and fires in the NEXT
+    // test. beforeEach re-establishes the inside-hours default, so a plain mockReturnValue is scoped.
+    (checkBusinessHours as jest.Mock).mockReturnValue({
+      timezone: 'America/Denver',
+      localTime: '2026-08-01T03:00:00',
+      wasFallback: false,
+    });
+    const r = await sendEmail(args({ memory: mem({ record_type: 'Real' }) }));
+    expect(r.status).toBe('deferred');
+    expect(r.reason).toBe('outside_business_hours');
+    expect(r.retry_at).toBeTruthy();
+    // The deferral IS audited — that is how it has an owner — but it must be logged as `deferred`,
+    // and the domain budget must be untouched: nothing was spent on a send that did not happen.
+    const log = store.collection(SEND_LOG);
+    expect(log).toHaveLength(1);
+    expect(log[0][1].status).toBe('deferred');
+    expect(log[0][1].reason).toBe('outside_business_hours');
+    expect(store.collection(BUDGET_COLLECTION)).toHaveLength(0);
+  });
+
+  it('a Test record is not gated by the clock at all', async () => {
+    // NOT mockReturnValueOnce: a Test record never consults this gate, so an unconsumed `Once`
+    // survives clearAllMocks (which drops calls, not queued implementations) and fires in the NEXT
+    // test. beforeEach re-establishes the inside-hours default, so a plain mockReturnValue is scoped.
+    (checkBusinessHours as jest.Mock).mockReturnValue({
+      timezone: 'America/Denver',
+      localTime: '2026-08-01T03:00:00',
+      wasFallback: false,
+    });
+    expect((await sendEmail(args())).status).toBe('sent');
   });
 });
 
