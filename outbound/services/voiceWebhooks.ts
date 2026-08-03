@@ -73,6 +73,7 @@ import { resolveLocation } from './enroll';
 import { deletePendingTasksByType } from './scheduling';
 import { releaseVoiceSlot } from './voiceConcurrency';
 import { fetchConversationFromElevenlabs } from './elevenlabs';
+import { syncHubspotStage } from './hubspotDeals';
 import { formatElevenlabsTranscript } from '../tools/reviewCallTranscript';
 import type { BedrockMessage, ChatMemory } from '../types';
 
@@ -596,7 +597,11 @@ export async function handleConversationInitWebhook(
       } catch (e) {
         console.warn(`[OB_INIT] stage->Engaged failed for ${chatId}: ${e}`);
       }
-      // Phase 9: syncHubspotStage — best-effort CRM mirroring in the source.
+      try {
+        await syncHubspotStage(chatId, agentId);
+      } catch {
+        // Best-effort: the call must connect regardless.
+      }
     } else {
       chatId = (await getOrCreateOutboundChat(agentId, callerId)).chatId;
       const dealersId = String(agentData.dealers_id ?? '');

@@ -76,6 +76,7 @@ import {
 import { isSuppressed, suppress } from './suppression';
 import { resolveSendgridConfig } from './sendgridMail';
 import { deletePendingReminders } from './reminders';
+import { syncHubspotStage } from './hubspotDeals';
 import { runOutboundLlm } from '../llm/turn';
 import { envStr } from '../config';
 
@@ -704,7 +705,11 @@ export async function handleInboundEmail(
       `[OB_EMAIL] failed to cancel followup_if_no_reply tasks for ${chatId}: ${e}`
     );
   }
-  // Phase 9: syncHubspotStage mirrors the Engaged transition.
+  try {
+    await syncHubspotStage(chatId, agentId);
+  } catch {
+    // Best-effort CRM mirroring — the reply is what matters.
+  }
 
   await recordThreadAnchor(chatId, data, headers, memory);
 

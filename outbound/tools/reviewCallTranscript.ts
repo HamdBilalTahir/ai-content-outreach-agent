@@ -81,6 +81,11 @@ import { deletePendingOutboundOutreach } from '../services/scheduling';
 import { handleNotInterested } from '../services/notInterested';
 import { handleReferralTransfer } from '../services/referralTransfer';
 import { generateAndCacheSummary } from '../services/conversationSummary';
+import { preservePriorEmailOnContact } from '../services/hubspot';
+import {
+  maybeAddDealConversationNote,
+  syncHubspotStage,
+} from '../services/hubspotDeals';
 import { ELEVENLABS_BASE_API } from '../services/elevenlabs';
 import {
   classifyCallOutcome,
@@ -657,9 +662,16 @@ export async function parseAndRunReviewCallTranscript(
             });
             // The SAME prospect switching to a different address (not a referral — the transfer guard
             // below verifies that): keep the OLD address on the HubSpot contact by adding the new one
-            // as a secondary. Never overwrite or delete the prior address. Phase 9:
-            // preservePriorEmailOnContact. Best-effort and non-blocking in the source, so its absence
-            // changes nothing else here.
+            // as a secondary. Never overwrite or delete the prior address.
+            if (m.hubspot_contact_id) {
+              try {
+                await preservePriorEmailOnContact(chatId, agentId, null, newEmail);
+              } catch (e) {
+                console.warn(
+                  `[REVIEW] HubSpot secondary-email add failed chat=${chatId}: ${e}`
+                );
+              }
+            }
           }
           memoryChanges.push(
             `customer_email recorded: '${newEmail}' (newest active, history kept)`
@@ -870,7 +882,15 @@ export async function parseAndRunReviewCallTranscript(
     }
 
     // 8b. The source retries the rep-facing deal Note here, now the summary is cached (idempotent,
-    // best-effort). Phase 9: maybeAddDealConversationNote.
+    // best-effort): the summary is now cached, so a deal whose booking-time attempt produced no brief
+    // gets one. Idempotent — it no-ops when the note already exists.
+    if (chatId && agentId) {
+      try {
+        await maybeAddDealConversationNote(chatId, agentId);
+      } catch (e) {
+        console.warn(`[REVIEW] deal note retry failed (non-blocking): ${e}`);
+      }
+    }
 
     // The turn engine reads these for dynamic SMS/phone tool re-injection.
     const smsOptInDetected = channelPref.sms_opt_in;
@@ -1071,7 +1091,12 @@ export async function parseAndRunReviewCallTranscript(
           // Non-blocking: the stage advance is what matters.
         }
         // Comms analytics are dealer-scoped and the source only writes them when a dealers_id exists;
-        // outbound prospects have none, so there is nothing to write here. Phase 9: syncHubspotStage.
+        // outbound prospects have none, so there is nothing to write here.
+        try {
+          await syncHubspotStage(chatId, agentId);
+        } catch {
+          // Best-effort CRM mirroring.
+        }
       } catch (e) {
         console.error(`[ProspectAnalytics] Failed to set Engaged stage: ${e}`);
       }

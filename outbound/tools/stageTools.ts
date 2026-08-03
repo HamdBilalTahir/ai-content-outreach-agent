@@ -48,6 +48,7 @@ import {
 import { enforceSingleProactiveTask } from '../services/scheduling';
 import { handleNotInterested } from '../services/notInterested';
 import { fallbackToEmailLane } from '../services/stalledRecovery';
+import { syncHubspotStage } from '../services/hubspotDeals';
 import { registerTool } from '../llm/toolRegistry';
 import type { BedrockMessage, ChatDoc } from '../types';
 
@@ -277,7 +278,15 @@ export async function parseAndRunMarkProspectLost(
 
   // Lost is terminal → no leftover nudge may fire against a closed prospect.
   const cancelled = await cancelPendingFollowups(chatId);
-  // Phase 9: syncHubspotStage mirrors Lost → Closed Lost. Best-effort in the source.
+  // Deterministic CRM mirror: Lost → Closed Lost. Best-effort — the transition already succeeded.
+  try {
+    const agentId = String(metaData.agent_id ?? chatData.agentId ?? '');
+    if (agentId) await syncHubspotStage(chatId, agentId);
+  } catch (e) {
+    console.warn(
+      `[OB mark_prospect_lost] HubSpot sync failed for ${chatId} (non-blocking): ${e}`
+    );
+  }
   console.log(
     `[OB mark_prospect_lost] Chat ${chatId} marked Lost: ${reason} ` +
       `(${cancelled} pending follow-up task(s) cancelled)`
