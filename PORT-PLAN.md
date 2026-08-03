@@ -64,7 +64,7 @@ forced them are the expensive part to rediscover.
 | 10c¹  | HubSpot admin + audience-preview views            | ~270         | `f43228d` |
 | 10c²  | Voice admin views + the DNC area-code registry    | ~370         | `da3b615` |
 | 10d¹  | Deal-analytics read layer + the funnel view       | ~425         | `b06a316` |
-| 10d²  | The attribution engine + its scan endpoint        | ~405         | —         |
+| 10d²  | The attribution engine + its scan endpoint        | ~405         | `8808adc` |
 | 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
