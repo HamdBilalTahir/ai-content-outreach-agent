@@ -54,7 +54,7 @@ forced them are the expensive part to rediscover.
 | 8b²   | Turn-engine helpers, guardrails, prompt injection | ~370         | `c30f9a3` |
 | 8b³   | The tool-dispatch loop (`with_tools`)             | ~1,370       | `c5219b9` |
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | `3567aa5` |
-| 9a    | HubSpot client core + contacts                    | ~600         | PENDING   |
+| 9a    | HubSpot client core + contacts                    | ~600         | `619623a` |
 | 9b    | Stage sync + deals                                | ~500         | —         |
 | 9c    | Meetings, slots, booking                          | ~350         | —         |
 | 9d    | Audiences, lists, search                          | ~500         | —         |
