@@ -28,6 +28,16 @@ jest.mock('../../http/webhookViews', () => ({
   unsubscribePostView: jest.fn(async () => ({ status: 200, body: 'done' })),
   callLlmOutboundView: jest.fn(async () => ({ status: 200, json: {} })),
 }));
+jest.mock('../../http/voiceViews', () => ({
+  voiceConnectView: jest.fn(async () => ({ status: 200, json: {} })),
+  voiceSettingsUpdateView: jest.fn(async () => ({ status: 200, json: {} })),
+  voiceResetView: jest.fn(async () => ({ status: 200, json: {} })),
+}));
+jest.mock('../../http/dncViews', () => ({
+  dncAreaCodesListView: jest.fn(async () => ({ status: 200, json: {} })),
+  dncAreaCodesUpsertView: jest.fn(async () => ({ status: 200, json: {} })),
+  dncAreaCodeDeleteView: jest.fn(async () => ({ status: 200, json: {} })),
+}));
 jest.mock('../../http/hubspotViews', () => ({
   hubspotDiscoveryView: jest.fn(async () => ({ status: 200, json: {} })),
   hubspotAddPropertyOptionView: jest.fn(async () => ({
@@ -75,6 +85,9 @@ describe('the route table', () => {
       // configured by hand in the provider console and a mismatch is a silent 404.
       'voice-agent/elevenlabs/outbound-webhook',
       'voice-agent/elevenlabs/conversation-init',
+      'voice-agent/connect/',
+      'voice/update/',
+      'voice/reset/',
       'call-llm-outbound/',
       'task-cron-job/',
       'hubspot/discovery/',
@@ -93,8 +106,9 @@ describe('the route table', () => {
       'chats/resume/',
       'chats/:chat_id/pause/',
       'chats/:chat_id/resume/',
-      // Declared LAST, as the source declares it — after every campaign sub-action.
+      // Declared after every campaign sub-action, as the source declares it.
       'campaigns/:campaign_id/',
+      'dnc/area-codes/',
     ]);
   });
 
@@ -106,6 +120,9 @@ describe('the route table', () => {
       'outbound_email_inbound',
       'outbound_elevenlabs_webhook',
       'outbound_elevenlabs_conversation_init',
+      'outbound_voice_connect',
+      'outbound_voice_update',
+      'outbound_voice_reset',
       'outbound_call_llm',
       'outbound_task_cron_job',
       'outbound_hubspot_discovery',
@@ -125,6 +142,7 @@ describe('the route table', () => {
       'outbound_chat_pause',
       'outbound_chat_resume',
       'outbound_campaign_detail',
+      'outbound_dnc_area_codes',
     ]);
   });
 
@@ -163,8 +181,12 @@ describe('matchRoute', () => {
   it('returns null for a route whose view has not landed yet', () => {
     // Absent from the table on purpose — see the note in routes.ts on why nothing is stubbed.
     expect(matchRoute('analytics/deal-funnel/')).toBeNull();
-    expect(matchRoute('voice/update/')).toBeNull();
-    expect(matchRoute('dnc/area-codes/')).toBeNull();
+    expect(matchRoute('analytics/run-deal-attribution/')).toBeNull();
+  });
+
+  it('gives the DNC registry all three of its methods', () => {
+    const dnc = matchRoute('dnc/area-codes/')!.route;
+    expect(Object.keys(dnc.methods).sort()).toEqual(['DELETE', 'GET', 'POST']);
   });
 
   it('captures a path parameter under the source parameter name', () => {

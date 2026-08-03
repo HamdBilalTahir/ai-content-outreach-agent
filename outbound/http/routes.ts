@@ -49,6 +49,16 @@ import {
   hubspotSearchContactsView,
 } from './hubspotViews';
 import {
+  dncAreaCodeDeleteView,
+  dncAreaCodesListView,
+  dncAreaCodesUpsertView,
+} from './dncViews';
+import {
+  voiceConnectView,
+  voiceResetView,
+  voiceSettingsUpdateView,
+} from './voiceViews';
+import {
   callLlmOutboundView,
   conversationInitWebhookView,
   elevenlabsOutboundWebhookView,
@@ -113,6 +123,24 @@ export const routes: Route[] = [
     name: 'outbound_elevenlabs_conversation_init',
     path: 'voice-agent/elevenlabs/conversation-init',
     methods: { POST: conversationInitWebhookView },
+  },
+  // FE-callable: connect an ElevenLabs voice agent to outbound + attach the outbound post-call webhook.
+  {
+    name: 'outbound_voice_connect',
+    path: 'voice-agent/connect/',
+    methods: { POST: voiceConnectView },
+  },
+  // Outbound voice PROMPT management: store the ElevenLabs prompt on the agent doc + sync, and reset it
+  // to the saved default. (Cloned inbound voice stack; skills are never injected into calls.)
+  {
+    name: 'outbound_voice_update',
+    path: 'voice/update/',
+    methods: { POST: voiceSettingsUpdateView },
+  },
+  {
+    name: 'outbound_voice_reset',
+    path: 'voice/reset/',
+    methods: { POST: voiceResetView },
   },
   // FE-consumable outbound LLM endpoint (also reused internally by the cron + email webhook).
   {
@@ -222,6 +250,16 @@ export const routes: Route[] = [
     name: 'outbound_campaign_detail',
     path: 'campaigns/:campaign_id/',
     methods: { GET: campaignDetailView, POST: campaignActionView },
+  },
+  // FE admin: the FTC DNC area-code registry (which area codes our SAN can scrub) — GET/POST/DELETE.
+  {
+    name: 'outbound_dnc_area_codes',
+    path: 'dnc/area-codes/',
+    methods: {
+      GET: dncAreaCodesListView,
+      POST: dncAreaCodesUpsertView,
+      DELETE: dncAreaCodeDeleteView,
+    },
   },
 ];
 

@@ -6,6 +6,27 @@
 
 ---
 
+> ### Outbound agent port — Phase 10c²: the voice admin views and the DNC area-code registry
+>
+> - **What changed:** Ported `views/voice_settings.py`, `views/voice_connect.py`, `views/dnc_area_codes.py`, and `serializers.py` — as `outbound/http/voiceViews.ts`, `dncViews.ts`, and `serializers.ts`. Four routes join the table, now twenty-nine. **Every route in `urls.py` is live except the two `analytics/` endpoints**, which land with the funnel in 10d.
+> - **`serializers.py` is not ported as a DRF framework.** The two serializers it defines become two validation functions. What IS reproduced faithfully, because the FE reads it: the error **shape** (`{field: [message]}`, DRF's `serializer.errors`, so the form can attach a message to an input) and the two-pass **order** — field validation first, and the object-level pass only if every field passed. That order matters: a body with both a malformed expiry and no area codes reports the date alone, rather than sending the form chasing two problems when it has one. Building a generic `Serializer`/`Field` layer would have been a large amount of speculative code in service of one endpoint.
+> - **The DNC registry REPORTS invalid codes; the campaign audience validator REJECTS them — and both are right.** This is the most interesting thing in the increment. Same input shape, opposite fail direction, because the cost is asymmetric in opposite directions: this endpoint _registers_ which area codes may be scrubbed, so a dropped token **narrows** the registry and is safe. In 10b a dropped token would have **widened** the dialled audience past what was actually scrubbed. Recorded on both modules so a future "consistency" pass cannot quietly align them.
+> - **The bulk paste is the real input.** The admin form's area codes arrive as a copy-paste out of a spreadsheet or an email, so any run of non-digits separates them — comma, space, newline, semicolon, pipe. If this regressed to comma-only, half a paste would land as one unparseable token and the registry would silently under-register, which means the scrub would silently stop covering codes someone believes are covered.
+> - **There is no status field, on purpose.** Active/inactive is derived from `san_expiry_date` at read time. A stored flag would need someone to remember to flip it the day a subscription lapsed; a derived one cannot drift.
+> - **DELETE answers 400 for a code that was not in the registry.** Unusual — a delete of something absent is normally idempotent — and preserved, because the caller asked to withdraw authorization for a code and "there was nothing to withdraw" means their model of the registry is wrong.
+> - **The voice views sync BEFORE they write.** If ElevenLabs refuses the prompt, the agent doc is left untouched, so it never claims a prompt the provider is not actually serving. The failure is a **502**, not a 500: the fault was upstream, which is what the FE needs in order to decide whether retrying is worth anything. Asserted by checking the doc is still empty after a refused sync.
+> - **The webhook re-attach is best-effort, for the opposite reason.** `createElevenlabsAgent`/`updateElevenlabsAgent` are clones of the inbound provisioner and may set the INBOUND webhook, so both sync paths attach the outbound one afterwards — but failing the whole request over something the next sync will fix would strand the user's edit.
+> - **The default snapshot is taken on the FIRST save**, because reset has nothing to restore to otherwise. A **blank** stored default counts as no default — otherwise reset would faithfully restore an empty prompt. And an explicitly empty `voice_prompt` is refused rather than falling back to the stored one: `is None`, not falsiness, or an edit that cleared the prompt would report success while being silently undone.
+> - **Reset writes only the two fields it changes**, leaving `voice_settings` alone so a concurrent settings save cannot lose.
+> - **`voice-agent/connect/` works with no `agent_id` at all**, because attaching the webhook is useful on its own and the FE sometimes connects a voice agent before it has an outbound agent to bind it to. `post_call_webhook_synced` is **`null`** for a non-ElevenLabs provider — nothing was attempted, which is a different fact from an attach that was tried and failed.
+> - **Files:**
+>   - `outbound/http/serializers.ts`, `outbound/http/dncViews.ts`, `outbound/http/voiceViews.ts`
+>   - `outbound/http/routes.ts` (four routes added)
+>   - `outbound/__tests__/http/{serializers,dncViews,voiceViews}.test.ts`, `outbound/__tests__/http/routes.test.ts`
+> - **Verification:** 1,959 tests across 47 suites (78 new), `tsc --noEmit` clean, `eslint` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 10c¹: the HubSpot admin and audience-preview views
 >
 > - **What changed:** Ported `views/hubspot_discovery.py` — all seven views (discovery, property-option, delete-records, lists, list-members, contact-properties, search-contacts) — as `outbound/http/hubspotViews.ts`, and added `deleteHubspotRecords` to `services/hubspot.ts`. The route table is now twenty-five. The FE can complete HubSpot setup, build a filter UI, preview an audience, and tear down its own E2E records.

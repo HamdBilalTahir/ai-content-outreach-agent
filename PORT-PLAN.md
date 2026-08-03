@@ -66,7 +66,7 @@ forced them are the expensive part to rediscover.
 | 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **1,881 tests / 44 suites**, `tsc` and `eslint` clean.
+Current: **1,959 tests / 47 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -463,6 +463,30 @@ CRM record.
 "deletion", and it delivered `deleteObject` — the generic primitive — but not the orchestrator that
 resolves the agent's token and calls it twice. Nothing referenced it until this view, so the gap was
 invisible. Landed here, in the source's own module, with its own tests.
+
+#### 10c² — the voice admin views and the DNC area-code registry (~370 lines) — ✅ DONE
+
+`views/voice_settings.py` (150) · `views/voice_connect.py` (53) · `views/dnc_area_codes.py` (78) ·
+`serializers.py` (90) — as `outbound/http/voiceViews.ts`, `dncViews.ts`, and `serializers.ts`. Four
+routes join the table, which is now twenty-nine. **Every route in `urls.py` is live except the two
+`analytics/` endpoints**, which land with the funnel in 10d.
+
+**`serializers.py` is NOT ported as a DRF framework.** The two serializers it defines are ported as two
+validation functions, reproducing the error SHAPE (`{field: [message]}`) and the two-pass ORDER (field
+validation first; the object-level pass only if every field passed) because the FE reads both. Building a
+generic `Serializer`/`Field` layer would be a large amount of speculative code in service of one endpoint.
+
+**The DNC registry REPORTS invalid codes; the campaign audience validator REJECTS them.** Both are
+correct, and the asymmetry is the interesting part: this endpoint _registers_ which codes may be
+scrubbed, so a dropped token narrows the registry and is safe. In 10b a dropped token would have widened
+the dialled audience past what was actually scrubbed. Same input shape, opposite fail direction, because
+the cost is asymmetric in opposite directions. Recorded on both modules.
+
+**The voice views sync BEFORE they write.** If ElevenLabs refuses the prompt, the agent doc is left
+untouched, so it never claims a prompt the provider is not serving — and the failure is a 502, not a 500,
+because the fault was upstream and that is what tells the FE whether a retry is worth anything. The
+webhook re-attach after the sync is best-effort for the opposite reason: the prompt is saved and the
+agent exists either way, and the next sync fixes it.
 
 ## Deferral ledger
 
