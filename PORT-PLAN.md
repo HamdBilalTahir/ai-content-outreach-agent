@@ -65,7 +65,7 @@ forced them are the expensive part to rediscover.
 | 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **1,768 tests / 42 suites**, `tsc` and `eslint` clean.
+Current: **1,827 tests / 43 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -415,6 +415,25 @@ would answer 200 with a lie. The remaining entries land with their views in 10b�
 deployment running both apps the source's inbound path is a judgement call. Here it is not — this port
 has no inbound app, so the source's value resolves to a 404 at `baseUrl()` and a provisioned agent
 would get no pre-call context at all. See the deliberate-divergences section.
+
+#### 10b — campaigns and chat pause/resume (~227 lines) — ✅ DONE
+
+`views/campaigns.py` — the twelve campaign and chat-lifecycle views, plus `validateAudience`, as
+`outbound/http/campaignViews.ts`. Ten routes join the table, which is now eighteen.
+
+`validateAudience` is the substance: it is the only gate between an FE payload and a campaign that will
+enroll thousands of contacts. Two decisions in it are worth restating. **Emptiness, not presence,**
+decides each per-type check — the source reads `audience.get("contacts") or []`, so a `contacts: []`
+csv campaign is rejected rather than created to do nothing. And **any invalid area code rejects the
+whole request**: an area-code selection is a DNC-scrubbability claim, so enrolling only the codes that
+happened to parse would dial the remainder unscrubbed, which is the precise thing the selection exists
+to prevent.
+
+`bool(data.get(k, default))` is translated in the view, not left to the service: the default fires only
+on an ABSENT key and a present value is then coerced, so `exclude_contacted: null` from the FE means
+OFF. `??` would have read it as "unset" and turned dedup back on — the same absent-vs-null distinction
+the port has been tracking since Phase 2, arriving here through an HTTP body instead of a Firestore
+read.
 
 ## Deferral ledger
 

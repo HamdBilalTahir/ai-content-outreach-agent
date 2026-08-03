@@ -6,6 +6,27 @@
 
 ---
 
+> ### Outbound agent port — Phase 10b: campaigns and chat pause/resume
+>
+> - **What changed:** Ported `views/campaigns.py` — the twelve campaign and chat-lifecycle views plus the audience validator — as `outbound/http/campaignViews.ts`, and wired ten routes into the table (now eighteen). The FE can now fire a campaign, poll it, pause/resume/stop it, add records to a live one, and pause or resume chats individually or in bulk.
+> - **`validateAudience` is the substance of the phase**, because it is the only gate between an FE payload and a campaign that will enroll thousands of contacts. Everything else here is a status projection or a lifecycle flip.
+> - **Emptiness, not presence, decides each per-type check.** The source reads `audience.get("contacts") or []`, so a `contacts: []` csv campaign is **rejected** rather than created to do nothing — and the same for an empty `include_contact_ids`. Asserted in both directions.
+> - **Any invalid area code rejects the whole request.** Not "drop the bad ones": an area-code selection is a DNC-scrubbability claim, so enrolling only the codes that happened to parse would dial the remainder **unscrubbed** — the precise thing the selection exists to prevent. Valid codes are normalized and deduped in place, and the view copies the audience first so the rewrite cannot reach back into the parsed request body.
+> - **`include_contact_ids` is authoritative and self-sufficient**, satisfying the per-type picker requirement for all three sources. That is what lets the FE preview a list, let the user deselect rows, and fire the campaign with the survivors — without re-sending a `list_id` that no longer describes the audience.
+> - **`bool(data.get(k, default))` is translated in the view, not left to the service.** The default fires only on an ABSENT key and a present value is then coerced, so `exclude_contacted: null` from the FE means **off**. `??` would have read it as "unset" and quietly turned cross-campaign dedup back on. This is the same absent-vs-null distinction the port has tracked since Phase 2, arriving through an HTTP body instead of a Firestore read.
+> - **`remaining` is `null`, not `0`, while `total` is uncounted.** The enrollment worker counts the audience asynchronously and leaves `total: null` until it has; reporting `0 remaining` would render a campaign that has barely started as finished. It also floors at 0 when enrollment overshot the count.
+> - **Status codes are preserved exactly, and they are what these tests protect.** Create answers **201** — the FE distinguishes "the campaign now exists and the worker will enroll it" from a 200 that could be a status read. Every lifecycle path returns parseable JSON: 400 for a bad action or missing id, 404 for a missing campaign, 500 with an `error` key for a backend fault. The source's own docstring calls this out — an unhandled HTML 500 is a failure the FE cannot show the user.
+> - **`add-records` answers 400 even for "campaign not found".** The service funnels every refusal — not found, paused, stopped — through one status, and reclassifying by error message would be guesswork. Preserved as-is.
+> - **`paused: false` is a normal 200.** The service refuses an already-paused or **archived** chat, and archive is terminal — pausing it would imply it could be resumed. That refusal is an answer, not an error. Bulk pause/resume 400 an empty or non-array `chat_ids`, so an empty selection cannot read as a success, and `by` defaults to `'manual'` for single and `'bulk'` for bulk — which is how the audit trail tells them apart.
+> - **The table gained two structural tests**: no duplicate `name` and no duplicate `(path, method)` pair — a duplicate under first-match resolution is a route that can never be reached, silently — and the declaration order is asserted, with the campaign detail route declared LAST after every sub-action exactly as `urls.py` declares it.
+> - **Files:**
+>   - `outbound/http/campaignViews.ts`
+>   - `outbound/http/routes.ts` (ten routes added)
+>   - `outbound/__tests__/http/campaignViews.test.ts`, `outbound/__tests__/http/routes.test.ts`
+> - **Verification:** 1,827 tests across 43 suites (59 new), `tsc --noEmit` clean, `eslint` clean. The routes suite needed updating for the expanded table, which is what that suite is for; its parameter-capture test now exercises real parameterised routes instead of a stand-in.
+>
+> ---
+>
 > ### Outbound agent port — Phase 10a: the route table, the request adapter, and the landed views
 >
 > - **What changed:** Ported `urls.py`, `views/__init__.py`, `views/task_cron_job.py`, `views/initiate_outbound_webhook.py`, and the view classes of the four webhook modules plus `OutboundCallLLMView` — as `outbound/http/{types,request,routes,webhookViews}.ts`, with a single Next.js catch-all adapter at `src/app/api/outbound/[...path]/route.ts`. The outbound app now has an HTTP surface. Phase 10 is split into five increments; this is the first.

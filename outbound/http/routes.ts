@@ -26,6 +26,20 @@
  */
 
 import {
+  campaignActionView,
+  campaignAddRecordsView,
+  campaignDetailView,
+  campaignPauseView,
+  campaignResumeView,
+  campaignStopView,
+  chatPauseView,
+  chatResumeView,
+  chatsPauseView,
+  chatsResumeView,
+  createCampaignView,
+  listCampaignsView,
+} from './campaignViews';
+import {
   callLlmOutboundView,
   conversationInitWebhookView,
   elevenlabsOutboundWebhookView,
@@ -102,6 +116,65 @@ export const routes: Route[] = [
     name: 'outbound_task_cron_job',
     path: 'task-cron-job/',
     methods: { GET: taskCronJobView },
+  },
+  // Campaigns — the FE fires one call; the backend enrolls + paces. GET lists, POST fires.
+  {
+    name: 'outbound_campaigns',
+    path: 'campaigns/',
+    methods: { GET: listCampaignsView, POST: createCampaignView },
+  },
+  {
+    name: 'outbound_campaign_pause',
+    path: 'campaigns/:campaign_id/pause/',
+    methods: { POST: campaignPauseView },
+  },
+  {
+    name: 'outbound_campaign_resume',
+    path: 'campaigns/:campaign_id/resume/',
+    methods: { POST: campaignResumeView },
+  },
+  {
+    name: 'outbound_campaign_stop',
+    path: 'campaigns/:campaign_id/stop/',
+    methods: { POST: campaignStopView },
+  },
+  {
+    name: 'outbound_campaign_add_records',
+    path: 'campaigns/:campaign_id/add-records/',
+    methods: { POST: campaignAddRecordsView },
+  },
+  // Chat pause / resume — manual single + bulk (status="paused"; freezes tasks, reversible).
+  //
+  // The BULK routes come first, exactly as they do in `urls.py`. They are two segments to the single
+  // routes' three, so nothing currently collides — but the ordering is the source's and is what would
+  // keep `chats/pause/` from being read as a chat whose id is "pause" if a two-segment
+  // `chats/:chat_id/` route ever landed.
+  {
+    name: 'outbound_chats_pause',
+    path: 'chats/pause/',
+    methods: { POST: chatsPauseView },
+  },
+  {
+    name: 'outbound_chats_resume',
+    path: 'chats/resume/',
+    methods: { POST: chatsResumeView },
+  },
+  {
+    name: 'outbound_chat_pause',
+    path: 'chats/:chat_id/pause/',
+    methods: { POST: chatPauseView },
+  },
+  {
+    name: 'outbound_chat_resume',
+    path: 'chats/:chat_id/resume/',
+    methods: { POST: chatResumeView },
+  },
+  // Declared AFTER the sub-actions, as the source declares it. Three segments versus two means no
+  // ambiguity today; keeping the order means there is none tomorrow either.
+  {
+    name: 'outbound_campaign_detail',
+    path: 'campaigns/:campaign_id/',
+    methods: { GET: campaignDetailView, POST: campaignActionView },
   },
 ];
 
