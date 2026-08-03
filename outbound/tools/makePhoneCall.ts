@@ -34,7 +34,7 @@
  *
  * ## Deferred
  *
- * The Vapi provider path and `ensureMeetingHost` are not here; see
+ * The Vapi provider path is not here; see
  * the notes at each call site. The `make_phone_call_from_number` variant and the S3 recording upload
  * land with the rest of the voice phase.
  */
@@ -65,6 +65,7 @@ import {
 import {
   bumpFollowupCount,
   loadChatDoc,
+  ensureMeetingHost,
   meetingHostFact,
   phoneOptedOut,
   pronouncePhoneNumber,
@@ -701,10 +702,15 @@ export async function parseAndRunMakePhoneCall(
   dynamicVariables.call_type = ctx.call_type;
   dynamicVariables.prospect_stage = ctx.stage;
 
-  // The meeting host, so the agent can name who the prospect will meet if asked mid-call. The resolver
-  // that populates it arrives with the HubSpot phase; until then this uses whatever is already cached.
+  // The meeting host, so the agent can name who the prospect will meet if asked mid-call. Resolved and
+  // cached from the CRM contact owner; falls back to whatever is already on the chat.
   try {
-    const host = chatMemory.meeting_host;
+    const host =
+      (await ensureMeetingHost(
+        chatId ?? '',
+        chatOwnerAgentId ?? agentId,
+        chatMemory
+      )) ?? chatMemory.meeting_host;
     const hostFact = meetingHostFact(host as string | undefined);
     if (hostFact) {
       instructions = instructions ? `${instructions}\n\n${hostFact}` : hostFact;

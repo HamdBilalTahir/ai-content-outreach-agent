@@ -6,6 +6,26 @@
 
 ---
 
+> ### Outbound agent port — Phase 9e: discovery, the meeting tools, and `ensureMeetingHost`
+>
+> - **What changed:** Ported HubSpot owners, meeting links, property options, deal pipelines, and config discovery as `outbound/services/hubspotDiscovery.ts`; the two meeting tools as `outbound/tools/hubspotMeetingTools.ts`; and `ensureMeetingHost` into `services/chat.ts`. **Phase 9 is complete**, and the deferral ledger now has no real work left — only the two permanently-unreachable entries.
+> - **`ensureMeetingHost` closes the oldest seam in the port**, deferred out of Phase 3 and open for eleven increments. It resolves the HubSpot contact owner's name so the agent can tell a prospect *who* they will be meeting, and it is wired at all four call sites (the outbound dial, the inbound conversation-init, and the turn entry). Idempotent — a cached name short-circuits before any CRM call — and a Test record resolves `owner_id_test`, so the host named is the owner of the calendar actually being booked.
+> - **A meeting link's organizer is a USER id, not an owner id**, and conflating them would silently break the binding Phase 9a depends on. A link names its organizer by `organizerUserId`; contacts and deals are stamped with `hubspot_owner_id`. The mapping goes through `user_id`, and an unmatched organizer leaves the owner fields *undefined* rather than wrong.
+> - **`schedule_hubspot_meeting` prefers the RESOLVED slot over whatever the model supplies.** `memory._agreed_slot` — the exact millis the review's matcher extracted from the transcript — beats the `start_time_ms` in the tool input, because turning "Friday at 10:45" into an epoch is precisely the arithmetic a model gets wrong, and **a booking at the wrong time is worse than no booking**. The model's value is the fallback.
+> - **Reminders are scheduled deterministically, not by the model.** The source records the model silently skipping them and producing booked demos with *zero* reminders. On success the tool also captures the address the customer booked with (when the chat had none) and clears `_agreed_slot`, so a later turn cannot re-book the same time. A reminder failure does not fail the booking — the meeting exists.
+> - **`addPropertyOption` is allowlisted and idempotent**, because it edits someone else's CRM schema. Only `hs_lead_status` and `lead_source` may be touched, and an option matching on value **or** label returns `added: false` — HubSpot accepts duplicate labels which then render as an unremovable duplicate in its own UI.
+> - **Both paginators carry a hard page cap** (10 for links, 20 for owners): a malformed `paging.next` that never clears would otherwise loop forever against a live API, and a truncated result plus a log line is the better failure.
+> - **Config comes from the agent's ACTIONS, not the skill's tool scoping.** Both tools resolve the HubSpot v2 action directly, so the action needs no `functions` list — connecting HubSpot is enough, and a skill author cannot accidentally scope the CRM out of existence.
+> - **Deferred deliberately:** the deal-funnel analytics (`deal_funnel_counts` and its attribution scan) move to Phase 10 alongside `views/deal_funnel.py`, the endpoint that is their only consumer — consistent with how every other view has been handled.
+> - **Files:**
+>   - `outbound/services/hubspotDiscovery.ts`, `outbound/tools/hubspotMeetingTools.ts`
+>   - `outbound/services/chat.ts` (adds `ensureMeetingHost`)
+>   - `outbound/llm/run.ts` (both tools registered in the dispatch table, now twelve), `outbound/llm/turn.ts`, `outbound/tools/makePhoneCall.ts`, `outbound/services/voiceWebhooks.ts` (host resolution wired)
+>   - `outbound/__tests__/services/hubspotDiscovery.test.ts`
+> - **Verification:** 1,714 tests across 39 suites (36 new), `tsc --noEmit` clean, `eslint outbound/` clean. One existing test needed updating — the dispatch-table assertion, which is exactly what that test is for.
+>
+> ---
+>
 > ### Outbound agent port — Phase 9d: audiences, lists, and search
 >
 > - **What changed:** Ported the audience-selection layer as `outbound/services/hubspotAudiences.ts` (~580 source lines) — contact lists, contact search with filter groups, the enrollment stamps, area-code annotation, and the HubSpot-contact → lead-payload mapping. This is what turns a HubSpot portal into a campaign audience, and it closes `resolveAudiencePage`'s HubSpot sources plus enroll's three contact stamps.

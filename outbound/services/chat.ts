@@ -1608,6 +1608,68 @@ export async function recentConversationContext(
 }
 
 /** The meeting host's role. HubSpot owner data carries no reliable job title, so it lives here. */
+/**
+ * Resolve and cache the meeting host — the HubSpot contact OWNER's display name — as
+ * `memory.meeting_host`.
+ *
+ * This is what lets the agent tell a prospect who they will actually be meeting, by name, across email,
+ * SMS, and a live call, and it is what reminders and confirmations use to name the rep.
+ *
+ * Idempotent: an already-cached name short-circuits before any CRM call, so the common path costs
+ * nothing. Real records resolve the config `owner_id`, Test records `owner_id_test` — the same split as
+ * the meeting link, so the named host is the owner of the calendar being booked.
+ *
+ * Best-effort throughout: returns the name or `null`, never throws, and never blocks its caller. When a
+ * `memory` object was passed in, the resolved name is written back onto it too, so the caller's already-
+ * loaded copy is not stale for the rest of the turn.
+ *
+ * Closes the seam deferred out of Phase 3.
+ */
+export async function ensureMeetingHost(
+  chatId: string,
+  agentId?: string | null,
+  memory?: ChatMemory | null
+): Promise<string | null> {
+  try {
+    const mem = memory ?? (await getMemory(chatId)) ?? {};
+    const existing = String(mem.meeting_host ?? '').trim();
+    if (existing) return existing;
+
+    const aid = String(agentId || mem.agent_id || '');
+    if (!chatId || !aid) return null;
+
+    const { resolveHubspotConfig, accessToken } = await import('./hubspot');
+    const { resolveOwnerName } = await import('./hubspotDiscovery');
+    const { getAgentActions } = await import('../firebase/agent');
+
+    const cfg = resolveHubspotConfig((await getAgentActions(aid)) ?? []);
+    if (!cfg || Object.keys(cfg).length === 0) return null;
+
+    const isTest =
+      String(mem.record_type ?? '')
+        .trim()
+        .toLowerCase() === 'test';
+    const ownerId =
+      isTest && cfg.owner_id_test ? cfg.owner_id_test : cfg.owner_id;
+    if (!ownerId) return null;
+
+    const token = await accessToken(cfg, aid);
+    if (!token) return null;
+
+    const name = await resolveOwnerName(token, ownerId);
+    if (name) {
+      await setMemory(chatId, { meeting_host: name });
+      // Keep the caller's loaded copy current for the rest of this turn.
+      if (memory) memory.meeting_host = name;
+      return name;
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[OB] ensureMeetingHost failed chat=${chatId}: ${e}`);
+    return null;
+  }
+}
+
 export const MEETING_HOST_TITLE = 'VP of Sales';
 
 /**

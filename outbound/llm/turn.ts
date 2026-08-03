@@ -80,7 +80,7 @@ import {
   buildPhoneConsentAskLine,
   hubspotContextLine,
 } from '../services/callScope';
-import { meetingHostFact } from '../services/chat';
+import { ensureMeetingHost, meetingHostFact } from '../services/chat';
 import { maxEmailFollowups } from '../config';
 import { withTools } from './run';
 import type { SessionUsage, TurnMeta } from './run';
@@ -373,7 +373,10 @@ export async function runOutboundTurn(
     systemPrompt = trigger.messageContext + systemPrompt;
 
     // Added BEFORE skills, and restored after — see restoreWipedInjections below.
-    const hostFact = meetingHostFact(chatMemory.meeting_host);
+    const host =
+      (await ensureMeetingHost(chatId, agentId, chatMemory)) ??
+      chatMemory.meeting_host;
+    const hostFact = meetingHostFact(host as string | undefined);
     if (hostFact) systemPrompt = `${hostFact}\n\n${systemPrompt}`;
 
     const metaData: TurnMeta = {

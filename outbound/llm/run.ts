@@ -86,6 +86,10 @@ import {
 } from '../tools/makePhoneCall';
 import { parseAndRunReviewCallTranscript } from '../tools/reviewCallTranscript';
 import {
+  parseAndRunGetHubspotAvailableSlots,
+  parseAndRunScheduleHubspotMeeting,
+} from '../tools/hubspotMeetingTools';
+import {
   parseAndRunCreateCustomTask,
   parseAndRunDeleteCustomTask,
   parseAndRunUpdateCustomTask,
@@ -180,6 +184,17 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       c.attendeeId,
       c.chatId
     ),
+
+  get_hubspot_available_slots: (c) =>
+    parseAndRunGetHubspotAvailableSlots(c.toolUseId, c.input, {
+      ...c.metaData,
+      chat_id: c.chatId,
+    }),
+  schedule_hubspot_meeting: (c) =>
+    parseAndRunScheduleHubspotMeeting(c.toolUseId, c.input, {
+      ...c.metaData,
+      chat_id: c.chatId,
+    }),
 
   mark_prospect_lost: (c) =>
     parseAndRunMarkProspectLost(c.toolUseId, c.input, c.chatId, c.metaData),

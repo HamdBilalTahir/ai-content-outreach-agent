@@ -69,6 +69,7 @@ import {
   resolveOutboundAgentId,
 } from './voiceRouting';
 import { buildOutboundCallScope, inboundCallContext } from './callScope';
+import { ensureMeetingHost } from './chat';
 import { resolveLocation } from './enroll';
 import { deletePendingTasksByType } from './scheduling';
 import { releaseVoiceSlot } from './voiceConcurrency';
@@ -629,9 +630,12 @@ export async function handleConversationInitWebhook(
     let localScope = await buildOutboundCallScope(memory, chatId, false, ctx);
 
     try {
-      // Phase 9 supplies `ensureMeetingHost`; until then the fact is built from whatever memory holds,
-      // which is exactly what the source falls back to when the CRM lookup fails.
-      const hostFact = meetingHostFact(memory.meeting_host);
+      // Resolve and cache the host so the agent can name who the prospect will meet; falls back to
+      // whatever memory already holds when the CRM lookup cannot resolve an owner.
+      const host =
+        (await ensureMeetingHost(chatId, agentId, memory)) ??
+        memory.meeting_host;
+      const hostFact = meetingHostFact(host as string | undefined);
       if (hostFact) localScope = `${localScope}\n\n${hostFact}`;
     } catch (e) {
       console.warn(`[OB_INIT] meeting-host inject skipped for ${chatId}: ${e}`);

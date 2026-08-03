@@ -58,10 +58,10 @@ forced them are the expensive part to rediscover.
 | 9b    | Stage sync + deals                                | ~500         | `b4a8f34` |
 | 9c    | Meetings, slots, booking                          | ~350         | `580ded9` |
 | 9d    | Audiences, lists, search                          | ~580         | `d1e3424` |
-| 9e    | Analytics, discovery, tools + views               | ~750         | —         |
+| 9e    | Discovery, meeting tools, `ensureMeetingHost`     | ~600         | PENDING   |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,678 tests / 38 suites**, `tsc` and `eslint` clean.
+Current: **1,714 tests / 39 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -335,11 +335,17 @@ contact → lead-payload mapping. Closes `resolveAudiencePage`'s HubSpot sources
 contact stamps (`stampContactNumberType`, `stampContactContacted`, `stampContactCampaign`) — the
 remaining three of enroll's six are the stage/deal calls already closed in 9b.
 
-#### 9e — analytics, discovery, tools and views (~750 lines)
+#### 9e — discovery, the meeting tools, and `ensureMeetingHost` (~600 lines) — ✅ DONE
 
-Deal funnel counts, owners, meeting links, property options, `discover_hubspot_config`, plus
-`tools/schedule_hubspot_meeting.py`, `tools/get_hubspot_available_slots.py`, and the two views (which
-may move to Phase 10 — verify their imports first).
+Owners, meeting links, property options, deal pipelines, `discover_hubspot_config`, both meeting tools
+(registered in the dispatch table, now twelve), and `ensureMeetingHost` — the port's OLDEST seam, open
+since Phase 3, wired at all four call sites.
+
+**The deal-funnel analytics move to Phase 10** with `views/deal_funnel.py`, their only consumer, as does
+`views/hubspot_discovery.py`. Consistent with every other view.
+
+**Phase 9 is complete. The deferral ledger has no real work left** — only `fetchCallFromVapi` and the
+provisioner's `getToolsForAgent`, both permanently unreachable.
 
 **Arrives with this phase:**
 
@@ -374,7 +380,7 @@ Every function knowingly absent from the port, and where it lands. Nothing else 
 
 | Deferred                                    | Out of | Into     | Blocked on                                               |
 | ------------------------------------------- | ------ | -------- | -------------------------------------------------------- |
-| `chat.ensureMeetingHost`                    | 3      | 9        | `hubspot.resolveHubspotConfig`, `resolveOwnerName`       |
+| ~~`chat.ensureMeetingHost`~~                | 3      | 9e ✅    | closed — resolves the CRM owner name, wired at 4 sites   |
 | ~~`chat.finalizeUnresolvedCall`~~           | 3      | 5 ✅     | landed early — deps arrived in Phase 4/5                 |
 | ~~`chat.reconcileStalePendingCalls`~~       | 3      | 5 ✅     | landed early, same reason                                |
 | ~~`callScope` (voice-prompt half)~~         | 2      | 7a ✅    | closed — the voice half landed with the foundation       |
