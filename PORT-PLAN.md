@@ -57,11 +57,11 @@ forced them are the expensive part to rediscover.
 | 9a    | HubSpot client core + contacts                    | ~600         | `619623a` |
 | 9b    | Stage sync + deals                                | ~500         | `b4a8f34` |
 | 9c    | Meetings, slots, booking                          | ~350         | `580ded9` |
-| 9d    | Audiences, lists, search                          | ~500         | —         |
+| 9d    | Audiences, lists, search                          | ~580         | PENDING   |
 | 9e    | Analytics, discovery, tools + views               | ~750         | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,616 tests / 37 suites**, `tsc` and `eslint` clean.
+Current: **1,678 tests / 38 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -328,10 +328,12 @@ slot matcher, and a shared availability block. **All three seams closed and wire
 CRM), and both voice availability injections are live — the outbound dial skips it for an already-booked
 reminder call, which must never offer new times.
 
-#### 9d — audiences, lists, search (~500 lines)
+#### 9d — audiences, lists, search (~580 lines) — ✅ DONE
 
-List members, contact search with filter groups, area-code annotation, the contacted-exclusion filter.
-Closes `resolveAudiencePage`'s HubSpot sources.
+Contact lists, contact search with filter groups, the enrollment stamps, area-code annotation, and the
+contact → lead-payload mapping. Closes `resolveAudiencePage`'s HubSpot sources and enroll's three
+contact stamps (`stampContactNumberType`, `stampContactContacted`, `stampContactCampaign`) — the
+remaining three of enroll's six are the stage/deal calls already closed in 9b.
 
 #### 9e — analytics, discovery, tools and views (~750 lines)
 
@@ -370,24 +372,24 @@ path while the outbound app mounts its own equivalent (see `CONVERSATION_INIT_PA
 
 Every function knowingly absent from the port, and where it lands. Nothing else is missing.
 
-| Deferred                                    | Out of | Into   | Blocked on                                               |
-| ------------------------------------------- | ------ | ------ | -------------------------------------------------------- |
-| `chat.ensureMeetingHost`                    | 3      | 9      | `hubspot.resolveHubspotConfig`, `resolveOwnerName`       |
-| ~~`chat.finalizeUnresolvedCall`~~           | 3      | 5 ✅   | landed early — deps arrived in Phase 4/5                 |
-| ~~`chat.reconcileStalePendingCalls`~~       | 3      | 5 ✅   | landed early, same reason                                |
-| ~~`callScope` (voice-prompt half)~~         | 2      | 7a ✅  | closed — the voice half landed with the foundation       |
-| ~~`reputation.emailDailySummary`~~          | 4      | 6 ✅   | closed — landed with the send path                       |
-| ~~`conversationSummary`~~                   | 5      | 7b¹ ✅ | closed — landed with the review toolkit, not Phase 8     |
-| enroll's 6 HubSpot stamps                   | 5      | 9      | `services/hubspot`                                       |
-| ~~`cron` email daily summary~~              | 5      | 6 ✅   | closed — wired into the cron with the send path          |
-| ~~`cron` turn runner (injected)~~           | 5      | 8b⁴ ✅ | closed — defaults to `runOutboundLlm`, still overridable |
-| `resolveAudiencePage` HubSpot sources       | 5      | 9      | HubSpot contact-fetch layer                              |
-| ~~review's `resolveBookingSlot`~~           | 7b²b²  | 9c ✅  | closed — defaults to the real matcher, still injectable  |
-| ~~review's `maybeAddDealConversationNote`~~ | 7b²b²  | 9b ✅  | closed — retried after the summary caches                |
-| ~~review's `preservePriorEmailOnContact`~~  | 7b²b²  | 9a ✅  | closed — appends a secondary, keeps the prior address    |
-| ~~review's `syncHubspotStage`~~             | 7b²b²  | 9b ✅  | closed — wired at all six call sites                     |
-| `fetchCallFromVapi`                         | 7b²b²  | —      | unreachable: no Vapi dialer exists in this port          |
-| provisioner's `getToolsForAgent`            | 7b²c   | —      | inbound tools-mapper; best-effort in the source          |
+| Deferred                                    | Out of | Into     | Blocked on                                               |
+| ------------------------------------------- | ------ | -------- | -------------------------------------------------------- |
+| `chat.ensureMeetingHost`                    | 3      | 9        | `hubspot.resolveHubspotConfig`, `resolveOwnerName`       |
+| ~~`chat.finalizeUnresolvedCall`~~           | 3      | 5 ✅     | landed early — deps arrived in Phase 4/5                 |
+| ~~`chat.reconcileStalePendingCalls`~~       | 3      | 5 ✅     | landed early, same reason                                |
+| ~~`callScope` (voice-prompt half)~~         | 2      | 7a ✅    | closed — the voice half landed with the foundation       |
+| ~~`reputation.emailDailySummary`~~          | 4      | 6 ✅     | closed — landed with the send path                       |
+| ~~`conversationSummary`~~                   | 5      | 7b¹ ✅   | closed — landed with the review toolkit, not Phase 8     |
+| ~~enroll's 6 HubSpot stamps~~               | 5      | 9b/9d ✅ | closed — stage/deal in 9b, the 3 contact stamps in 9d    |
+| ~~`cron` email daily summary~~              | 5      | 6 ✅     | closed — wired into the cron with the send path          |
+| ~~`cron` turn runner (injected)~~           | 5      | 8b⁴ ✅   | closed — defaults to `runOutboundLlm`, still overridable |
+| ~~`resolveAudiencePage` HubSpot sources~~   | 5      | 9d ✅    | closed — lists + search return lead payloads directly    |
+| ~~review's `resolveBookingSlot`~~           | 7b²b²  | 9c ✅    | closed — defaults to the real matcher, still injectable  |
+| ~~review's `maybeAddDealConversationNote`~~ | 7b²b²  | 9b ✅    | closed — retried after the summary caches                |
+| ~~review's `preservePriorEmailOnContact`~~  | 7b²b²  | 9a ✅    | closed — appends a secondary, keeps the prior address    |
+| ~~review's `syncHubspotStage`~~             | 7b²b²  | 9b ✅    | closed — wired at all six call sites                     |
+| `fetchCallFromVapi`                         | 7b²b²  | —        | unreachable: no Vapi dialer exists in this port          |
+| provisioner's `getToolsForAgent`            | 7b²c   | —        | inbound tools-mapper; best-effort in the source          |
 
 ## Deliberate divergences from the source
 

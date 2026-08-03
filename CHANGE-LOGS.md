@@ -6,6 +6,24 @@
 
 ---
 
+> ### Outbound agent port — Phase 9d: audiences, lists, and search
+>
+> - **What changed:** Ported the audience-selection layer as `outbound/services/hubspotAudiences.ts` (~580 source lines) — contact lists, contact search with filter groups, the enrollment stamps, area-code annotation, and the HubSpot-contact → lead-payload mapping. This is what turns a HubSpot portal into a campaign audience, and it closes `resolveAudiencePage`'s HubSpot sources plus enroll's three contact stamps.
+> - **An exclusion has to be added to EVERY filter group, and getting this wrong changes who gets dialled.** HubSpot evaluates `filterGroups` as a disjunction, so adding the contacted-exclusion (or the area-code constraint) to only the first group leaves every other branch completely unfiltered. Both helpers distribute across the whole DNF, and a filter with no groups to attach to becomes a lone group rather than being silently dropped. Tested by asserting the exclusion appears in *each* group.
+> - **An explicitly-empty area-code selection must match NOTHING.** If the caller selected area codes and none survive validation, the filter becomes `IN [""]` — a sentinel matching no contact. Returning everything instead would dial an **unscrubbed audience**, the exact opposite of what an area-code selection is for. Tested directly.
+> - **Email-only members are always kept.** They have no area code to judge, so filtering them out would silence a reachable channel over a phone-shaped rule. True on both the server-side search path and the client-side list path.
+> - **The channel-key exclusion exists for a case the id-based one cannot see.** A shared dealership line means the *same* phone appears under a *different* contact id, so an id-based exclude misses it and the campaign collapses two members onto one chat. Excluding on `p:<last-10>` / `e:<email>` catches it.
+> - **Operator normalization drops rather than sends a broken row.** A value-requiring operator with no value is discarded, because sending it 400s the whole query and loses the entire audience instead of one row. Cardinality is also normalized in both directions: several values with `EQ` become `IN`, one value with `IN` collapses to `EQ`. Unknown operators pass through upper-cased, so the friendly-label map is a convenience layer and not a whitelist.
+> - **Cross-campaign dedup is permanent by design.** `ava_last_contacted` is stamped at enrollment and never cleared — the whole point is that a contact this system has already worked is not silently re-enrolled by the next campaign. Each search ensures the property exists first, because HubSpot 400s a filter naming an unknown one.
+> - **`stampContactCampaign` writes ONLY the fields it was given.** Setting the campaign END later must not wipe the id or the start, so it patches a partial map rather than a whole object. Asserted.
+> - **Two smaller decisions preserved:** an unrecognised CNAM value normalizes to `unknown` rather than being rejected, because a vendor's surprise value should read as "we do not know" instead of corrupting a property the filters match on; and `total` is HubSpot's raw pre-area-filter count, not the returned page length — worth knowing when reading the number.
+> - **Files:**
+>   - `outbound/services/hubspotAudiences.ts`
+>   - `outbound/__tests__/services/hubspotAudiences.test.ts`
+> - **Verification:** 1,678 tests across 38 suites (62 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 9c: meetings, slots, and booking
 >
 > - **What changed:** Ported the meeting layer as `outbound/services/hubspotMeetings.ts` — availability fetch and formatting, booking, the `.ics` invite, `finalizeMeetingBooking`, the review's slot matcher, and a shared availability block. **Three seams close and are wired:** the review's `resolveBookingSlot` now defaults to the real matcher, and both voice availability injections (outbound dial and inbound conversation-init) are live.
