@@ -28,6 +28,21 @@ jest.mock('../../http/webhookViews', () => ({
   unsubscribePostView: jest.fn(async () => ({ status: 200, body: 'done' })),
   callLlmOutboundView: jest.fn(async () => ({ status: 200, json: {} })),
 }));
+jest.mock('../../http/hubspotViews', () => ({
+  hubspotDiscoveryView: jest.fn(async () => ({ status: 200, json: {} })),
+  hubspotAddPropertyOptionView: jest.fn(async () => ({
+    status: 200,
+    json: {},
+  })),
+  hubspotDeleteRecordsView: jest.fn(async () => ({ status: 200, json: {} })),
+  hubspotListsView: jest.fn(async () => ({ status: 200, json: {} })),
+  hubspotListMembersView: jest.fn(async () => ({ status: 200, json: {} })),
+  hubspotContactPropertiesView: jest.fn(async () => ({
+    status: 200,
+    json: {},
+  })),
+  hubspotSearchContactsView: jest.fn(async () => ({ status: 200, json: {} })),
+}));
 jest.mock('../../http/campaignViews', () => ({
   createCampaignView: jest.fn(async () => ({ status: 201, json: {} })),
   listCampaignsView: jest.fn(async () => ({ status: 200, json: {} })),
@@ -62,6 +77,13 @@ describe('the route table', () => {
       'voice-agent/elevenlabs/conversation-init',
       'call-llm-outbound/',
       'task-cron-job/',
+      'hubspot/discovery/',
+      'hubspot/property-option/',
+      'hubspot/delete-records/',
+      'hubspot/lists/',
+      'hubspot/list-members/',
+      'hubspot/contact-properties/',
+      'hubspot/search-contacts/',
       'campaigns/',
       'campaigns/:campaign_id/pause/',
       'campaigns/:campaign_id/resume/',
@@ -86,6 +108,13 @@ describe('the route table', () => {
       'outbound_elevenlabs_conversation_init',
       'outbound_call_llm',
       'outbound_task_cron_job',
+      'outbound_hubspot_discovery',
+      'outbound_hubspot_add_property_option',
+      'outbound_hubspot_delete_records',
+      'outbound_hubspot_lists',
+      'outbound_hubspot_list_members',
+      'outbound_hubspot_contact_properties',
+      'outbound_hubspot_search_contacts',
       'outbound_campaigns',
       'outbound_campaign_pause',
       'outbound_campaign_resume',
@@ -133,8 +162,8 @@ describe('matchRoute', () => {
 
   it('returns null for a route whose view has not landed yet', () => {
     // Absent from the table on purpose — see the note in routes.ts on why nothing is stubbed.
-    expect(matchRoute('hubspot/discovery/')).toBeNull();
     expect(matchRoute('analytics/deal-funnel/')).toBeNull();
+    expect(matchRoute('voice/update/')).toBeNull();
     expect(matchRoute('dnc/area-codes/')).toBeNull();
   });
 

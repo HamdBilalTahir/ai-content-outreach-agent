@@ -6,6 +6,26 @@
 
 ---
 
+> ### Outbound agent port — Phase 10c¹: the HubSpot admin and audience-preview views
+>
+> - **What changed:** Ported `views/hubspot_discovery.py` — all seven views (discovery, property-option, delete-records, lists, list-members, contact-properties, search-contacts) — as `outbound/http/hubspotViews.ts`, and added `deleteHubspotRecords` to `services/hubspot.ts`. The route table is now twenty-five. The FE can complete HubSpot setup, build a filter UI, preview an audience, and tear down its own E2E records.
+> - **The two token resolvers prefer OPPOSITE sources, and both preferences are correct.** `resolveToken` prefers a directly-supplied `access_token` — step 1 of setup has no saved action at all, and the FE holds a Private-App token the user just pasted. `resolveConfig` prefers `agent_id` — the list and search helpers refresh the token internally, and a bare `access_token` cannot be refreshed. Reading this as an inconsistency and normalizing it breaks one caller or the other, so both are asserted with the reason on the module.
+> - **The audience preview excludes on two different keys, because one cannot see what the other catches.** Contact ids hide contacts already enrolled in the campaign. But a shared dealership line means a **distinct** contact carries the **same** phone — an id-based exclusion misses it, and enrollment would silently collapse it onto the existing chat, so the preview count would not match what firing actually creates. The id exclusions go _into_ the search query so `total` reflects them; the channel-key pass runs _after_, because the HubSpot API has no way to express "a different contact sharing this phone".
+> - **`delete-records` is gated twice, and both gates are hard.** The caller must declare `record_type: "Test"`, and when a `chat_id` is given the chat's own `memory.record_type` must also be Test. A missing or unreadable chat reads as **not** Test and is refused — the only safe direction for a delete. No payload can reach a real prospect's CRM records through this route.
+> - **The memory cleanup is conditional on the delete having succeeded**, which is why `deleteHubspotRecords` reports tri-state per object: `null` (never asked) must not collapse into `false` (asked and failed). Clearing an id after a failed delete would leave a live CRM record with nothing in Firestore pointing at it — invisible until someone went looking for the duplicate.
+> - **`bool(data.get("exclude_contacted", True))` again**, this time on contact search — the second place in the port where `??` would have read an explicit `null` as "unset" and quietly turned cross-campaign dedup back on. Handled identically to the campaign create view, and asserted across all five input shapes.
+> - **`all_properties` is best-effort and falls through**, because rendering fewer columns beats failing the whole preview; and the channel-key lookup fails **open** to an empty set, because a preview that errors leaves the picker blank, which is worse than a count that is slightly high.
+> - **Survey finding: `delete_hubspot_records` was never ported.** Phase 9a's entry says "deletion", and it did deliver `deleteObject` — the generic primitive — but not the 13-line orchestrator that resolves the agent's token and calls it twice. Nothing referenced it until this view existed, so the gap was invisible. Landed here in the source's own module with its own tests.
+> - **A fixture was wrong again, and this is the ninth increment where that happened.** `provider` and `auth` live on the **agent's own** action document; the shared `actions/{id}` doc contributes only `type`, `action_prompt`, and `functions`. Seeding auth on the shared doc makes `resolveHubspotConfig` see an unconnected agent. `updateAgentActionAuth` writing the refreshed token to the per-agent doc is the definitive answer, and the corrected helper now says so.
+> - **Files:**
+>   - `outbound/http/hubspotViews.ts`
+>   - `outbound/services/hubspot.ts` (adds `deleteHubspotRecords`)
+>   - `outbound/http/routes.ts` (seven routes added)
+>   - `outbound/__tests__/http/hubspotViews.test.ts`, `outbound/__tests__/services/hubspot.test.ts`, `outbound/__tests__/http/routes.test.ts`
+> - **Verification:** 1,881 tests across 44 suites (54 new), `tsc --noEmit` clean, `eslint` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 10b: campaigns and chat pause/resume
 >
 > - **What changed:** Ported `views/campaigns.py` — the twelve campaign and chat-lifecycle views plus the audience validator — as `outbound/http/campaignViews.ts`, and wired ten routes into the table (now eighteen). The FE can now fire a campaign, poll it, pause/resume/stop it, add records to a live one, and pause or resume chats individually or in bulk.

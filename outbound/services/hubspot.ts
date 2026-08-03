@@ -708,4 +708,42 @@ export async function deleteObject(
   return false;
 }
 
+export interface DeleteRecordsResult {
+  /** Whether a usable token was resolved at all. `false` means nothing was attempted. */
+  authenticated: boolean;
+  /** `null` — not `false` — when no id was supplied, so "not asked" is distinct from "failed". */
+  contact_deleted: boolean | null;
+  deal_deleted: boolean | null;
+}
+
+/**
+ * Resolve the agent's HubSpot token and delete the given contact and/or deal.
+ *
+ * The E2E teardown path, called only behind the delete-records view's two Test gates. The tri-state
+ * results matter to the caller: the view clears an id from chat memory only when that id was actually
+ * deleted, so a `null` (never asked) and a `false` (asked and failed) must not be conflated — clearing
+ * on a failure would leave a live CRM record with nothing pointing at it.
+ */
+export async function deleteHubspotRecords(
+  agentId: string,
+  contactId?: string | null,
+  dealId?: string | null
+): Promise<DeleteRecordsResult> {
+  const cfg = resolveHubspotConfig((await getAgentActions(agentId)) ?? []);
+  const token = await accessToken(cfg, agentId);
+  const out: DeleteRecordsResult = {
+    authenticated: Boolean(token),
+    contact_deleted: null,
+    deal_deleted: null,
+  };
+  if (!token) return out;
+  if (contactId) {
+    out.contact_deleted = await deleteObject(token, 'contacts', contactId);
+  }
+  if (dealId) {
+    out.deal_deleted = await deleteObject(token, 'deals', dealId);
+  }
+  return out;
+}
+
 export const __testing = { nonEmpty, isTestRecordType, searchFirstId };

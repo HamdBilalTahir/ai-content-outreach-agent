@@ -20,7 +20,7 @@ forced them are the expensive part to rediscover.
 - **Behaviour is preserved over tidiness.** Where the source does something surprising, the port
   pins it with a test and records _why_ on the function. The bar for changing behaviour is not "this
   looks wrong" but "this does not do what it _says_ it does" — see the bug-fix section.
-- **A phase's own tests are suspect too.** Eight increments so far had a failing test whose FIXTURE was
+- **A phase's own tests are suspect too.** Nine increments so far had a failing test whose FIXTURE was
   invented rather than read from the source or the ported helper. Check which of the two is wrong
   before touching either.
 - **A mock that does not honour its real contract makes a test that proves nothing.** `generateText`
@@ -61,11 +61,12 @@ forced them are the expensive part to rediscover.
 | 9e    | Discovery, meeting tools, `ensureMeetingHost`     | ~600         | `1fcc845` |
 | 10a   | Route table, request adapter, webhook/cron views  | ~250         | `d75083c` |
 | 10b   | Campaigns + chat pause/resume views               | ~227         | `ed263a7` |
-| 10c   | HubSpot views, voice admin views, DNC registry    | ~530         | —         |
+| 10c¹  | HubSpot admin + audience-preview views            | ~270         | —         |
+| 10c²  | Voice admin views + the DNC area-code registry    | ~370         | —         |
 | 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **1,827 tests / 43 suites**, `tsc` and `eslint` clean.
+Current: **1,881 tests / 44 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -434,6 +435,34 @@ on an ABSENT key and a present value is then coerced, so `exclude_contacted: nul
 OFF. `??` would have read it as "unset" and turned dedup back on — the same absent-vs-null distinction
 the port has been tracking since Phase 2, arriving here through an HTTP body instead of a Firestore
 read.
+
+#### 10c¹ — the HubSpot admin and audience-preview views (~270 lines) — ✅ DONE
+
+`views/hubspot_discovery.py` — the seven views (discovery, property-option, delete-records, lists,
+list-members, contact-properties, search-contacts) as `outbound/http/hubspotViews.ts`, plus
+`deleteHubspotRecords` added to `services/hubspot.ts`. The table is now twenty-five routes.
+
+**The two token resolvers prefer OPPOSITE sources, and both preferences are correct.** `resolveToken`
+prefers a directly-supplied `access_token`, because step 1 of setup has no saved action and the FE holds
+a Private-App token the user just pasted. `resolveConfig` prefers `agent_id`, because the list/search
+helpers refresh the token internally and a bare `access_token` cannot be refreshed. Normalizing them
+breaks one caller or the other, so both are asserted.
+
+**The audience preview excludes on two different keys** because one cannot see what the other catches.
+Contact ids hide contacts already enrolled; a shared dealership line means a _distinct_ contact carries
+the same phone, which an id-based exclusion misses and enrollment would collapse onto the existing chat.
+The channel-key pass runs AFTER the search — the HubSpot API has no way to express it — while the id
+exclusions go into the query so `total` reflects them.
+
+**`delete-records` is gated twice**, and the memory cleanup afterwards is conditional on the delete
+having SUCCEEDED. That is why `deleteHubspotRecords` returns tri-state per object: `null` (never asked)
+must not collapse into `false` (asked and failed), because clearing an id on a failure orphans a live
+CRM record.
+
+**Survey finding:** `delete_hubspot_records` (13 lines) was never ported. Phase 9a's entry says
+"deletion", and it delivered `deleteObject` — the generic primitive — but not the orchestrator that
+resolves the agent's token and calls it twice. Nothing referenced it until this view, so the gap was
+invisible. Landed here, in the source's own module, with its own tests.
 
 ## Deferral ledger
 

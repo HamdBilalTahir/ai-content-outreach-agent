@@ -44,6 +44,7 @@ import {
   updateContactProperties,
   updateContactProperty,
   deleteObject,
+  deleteHubspotRecords,
 } from '../../services/hubspot';
 import type { AgentAction } from '../../firebase/agent';
 
@@ -587,6 +588,66 @@ describe('deleteObject', () => {
 
   test('no id makes no request', async () => {
     expect(await deleteObject(TOKEN, 'contacts', '')).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteHubspotRecords', () => {
+  /**
+   * Wire up an agent whose active v2 action carries a Private App token.
+   *
+   * `provider` and `auth` live on the AGENT's own action document, not on the shared `actions/{id}`
+   * one — that shared doc contributes only `type`, `action_prompt`, and `functions`, and
+   * `updateAgentActionAuth` writes the refreshed token back to the per-agent doc. Getting this
+   * backwards makes `resolveHubspotConfig` see an unconnected agent.
+   */
+  function connectAgent() {
+    store.set(`agents/${AGENT}`, {});
+    store.set(`agents/${AGENT}/actions/act_hs`, {
+      status: 'active',
+      provider: 'hubspot_v2',
+      auth: { access_token: TOKEN },
+    });
+  }
+
+  test('deletes both objects and reports each result', async () => {
+    connectAgent();
+    fetchMock.mockResolvedValue(ok({}, 204));
+    expect(await deleteHubspotRecords(AGENT, CONTACT, 'deal_1')).toEqual({
+      authenticated: true,
+      contact_deleted: true,
+      deal_deleted: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('an id not asked about stays NULL, distinct from a failure', async () => {
+    // The view clears an id from chat memory only when that id was actually deleted, so "not asked"
+    // and "asked and failed" must not collapse into one value.
+    connectAgent();
+    fetchMock.mockResolvedValue(ok({}, 204));
+    expect(await deleteHubspotRecords(AGENT, CONTACT)).toEqual({
+      authenticated: true,
+      contact_deleted: true,
+      deal_deleted: null,
+    });
+  });
+
+  test('a failed delete is false, not null', async () => {
+    connectAgent();
+    fetchMock.mockResolvedValue(ok({}, 500));
+    expect(await deleteHubspotRecords(AGENT, CONTACT)).toMatchObject({
+      contact_deleted: false,
+    });
+  });
+
+  test('an unconnected agent attempts nothing at all', async () => {
+    const out = await deleteHubspotRecords(AGENT, CONTACT, 'deal_1');
+    expect(out).toEqual({
+      authenticated: false,
+      contact_deleted: null,
+      deal_deleted: null,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

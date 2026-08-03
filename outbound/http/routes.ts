@@ -40,6 +40,15 @@ import {
   listCampaignsView,
 } from './campaignViews';
 import {
+  hubspotAddPropertyOptionView,
+  hubspotContactPropertiesView,
+  hubspotDeleteRecordsView,
+  hubspotDiscoveryView,
+  hubspotListMembersView,
+  hubspotListsView,
+  hubspotSearchContactsView,
+} from './hubspotViews';
+import {
   callLlmOutboundView,
   conversationInitWebhookView,
   elevenlabsOutboundWebhookView,
@@ -116,6 +125,44 @@ export const routes: Route[] = [
     name: 'outbound_task_cron_job',
     path: 'task-cron-job/',
     methods: { GET: taskCronJobView },
+  },
+  // FE HubSpot v2 config setup: discovery (dropdowns) + add an option to a managed contact property.
+  {
+    name: 'outbound_hubspot_discovery',
+    path: 'hubspot/discovery/',
+    methods: { POST: hubspotDiscoveryView },
+  },
+  {
+    name: 'outbound_hubspot_add_property_option',
+    path: 'hubspot/property-option/',
+    methods: { POST: hubspotAddPropertyOptionView },
+  },
+  // FE E2E cleanup: delete a Test contact/deal (hard-gated to record_type == "Test").
+  {
+    name: 'outbound_hubspot_delete_records',
+    path: 'hubspot/delete-records/',
+    methods: { POST: hubspotDeleteRecordsView },
+  },
+  // FE campaign audience selection — the backend proxies HubSpot because the token lives here.
+  {
+    name: 'outbound_hubspot_lists',
+    path: 'hubspot/lists/',
+    methods: { POST: hubspotListsView },
+  },
+  {
+    name: 'outbound_hubspot_list_members',
+    path: 'hubspot/list-members/',
+    methods: { POST: hubspotListMembersView },
+  },
+  {
+    name: 'outbound_hubspot_contact_properties',
+    path: 'hubspot/contact-properties/',
+    methods: { POST: hubspotContactPropertiesView },
+  },
+  {
+    name: 'outbound_hubspot_search_contacts',
+    path: 'hubspot/search-contacts/',
+    methods: { POST: hubspotSearchContactsView },
   },
   // Campaigns — the FE fires one call; the backend enrolls + paces. GET lists, POST fires.
   {
