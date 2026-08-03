@@ -64,16 +64,20 @@ export const DEFAULT_VOICE_SETTINGS_ID = 'FQKBHsU2DaUNu4fGqIXy';
 /**
  * The conversation-initiation path an agent is told to fetch per-caller context from.
  *
- * **Preserved verbatim from the source, and it points at the INBOUND app.** The outbound app ships its
- * own handler at `/outbound_agent/voice-agent/elevenlabs/conversation-init`, mounted for exactly this
- * purpose and wired to outbound services (`resolveOutboundAgentForInbound`, `buildOutboundCallScope`) —
- * so an agent provisioned here fetches inbound context and the outbound handler is never reached. That
- * looks like a copy-paste survivor from the clone, but the path is inert until the route exists (Phase
- * 10), and guessing at provisioning that points live agents somewhere new is not a port's call. Left as
- * the source has it, overridable by env, and flagged for Phase 10 to settle.
+ * **Changed from the source, which points at the INBOUND app** — the open question this constant was
+ * flagged with through Phases 7b²c–9e, settled now that the route exists.
+ *
+ * The source provisions agents against `/inbound_agent/voice-agent/elevenlabs/conversation-init` while
+ * the outbound app mounts its own handler, wired to outbound services
+ * (`resolveOutboundAgentForInbound`, `buildOutboundCallScope`) for exactly this purpose. In a deployment
+ * that runs both apps that is a copy-paste survivor pointing agents at working-but-wrong context, which
+ * is a judgement call. Here it is not: **this port has no inbound app**, so the source's path resolves
+ * to a 404 at `baseUrl()` and the provisioned agent would get no pre-call context at all. There is
+ * exactly one conversation-init handler in this codebase, and the caller's own log line says it is
+ * adding *the* conversation-init webhook. Pointing at it is what the code claims to do.
  */
 export const CONVERSATION_INIT_PATH =
-  '/inbound_agent/voice-agent/elevenlabs/conversation-init';
+  '/api/outbound/voice-agent/elevenlabs/conversation-init';
 
 /** Friendly voice name → provider voice id. */
 export const VOICE_ID_MAPPING: Record<string, string> = {

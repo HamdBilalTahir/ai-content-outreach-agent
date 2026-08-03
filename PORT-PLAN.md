@@ -59,9 +59,13 @@ forced them are the expensive part to rediscover.
 | 9c    | Meetings, slots, booking                          | ~350         | `580ded9` |
 | 9d    | Audiences, lists, search                          | ~580         | `d1e3424` |
 | 9e    | Discovery, meeting tools, `ensureMeetingHost`     | ~600         | `1fcc845` |
-| 10    | HTTP surface & backfills                          | ~1,500       | —         |
+| 10a   | Route table, request adapter, webhook/cron views  | ~250         | —         |
+| 10b   | Campaigns + chat pause/resume views               | ~227         | —         |
+| 10c   | HubSpot views, voice admin views, DNC registry    | ~530         | —         |
+| 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
+| 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **1,714 tests / 39 suites**, `tsc` and `eslint` clean.
+Current: **1,768 tests / 42 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -102,6 +106,12 @@ Current: **1,714 tests / 39 suites**, `tsc` and `eslint` clean.
    `review_call_transcript`'s imports before committing to an order showed its helpers need
    `llm.ask.generate_text`, so Phase 8a shipped first and the review chain followed. This is the payoff
    for writing "verify the dependencies before starting" into the plan rather than trusting the numbering.
+
+8. **Phase 10 splits into five, and two files it never named turned up in the survey.** Surveying it
+   before starting found `views/deal_conversion.py` and `management/commands/run_deal_attribution.py`
+   absent from the plan entirely — the `management/commands/` line describes "7 backfills +
+   `reconcile_stale_calls`", which is an accurate count of the `backfill_*` files and silently omits the
+   ninth. A scope line written as a count is a scope line that cannot be checked against `ls`.
 
 Expect more of these. The source's import graph is not the directory structure. Note the direction of
 revision 5: a phase can be blocked by a phase that comes _after_ it, and the fix is to re-sequence, not
@@ -372,11 +382,39 @@ Thin once everything beneath it exists, which is why it is last.
 
 Also lands here from Phase 9e: `views/deal_funnel.py` (84) and `views/hubspot_discovery.py` (256), plus
 the deal-funnel ANALYTICS the funnel view is the only consumer of (`deal_funnel_counts`, the
-stage-attribution scan, and the deal-read helpers — roughly 190 lines of `services/hubspot.py`).
+stage-attribution scan, and the deal-read helpers — roughly 190 lines of `services/hubspot.py`), and
+`views/deal_conversion.py` (55) with its paired `management/commands/run_deal_attribution.py` (45) —
+which the survey found had never been assigned a phase at all. The plan's `management/commands/` line
+says "7 backfills + `reconcile_stale_calls`", and there are indeed exactly seven `backfill_*` commands;
+`run_deal_attribution` is a ninth file that is neither, so it fell through the description. Both go to
+10d with the funnel, which is the only thing that reads what they write.
 
-**One open question to settle here:** the provisioner points agents at the INBOUND conversation-init
-path while the outbound app mounts its own equivalent (see `CONVERSATION_INIT_PATH` in
-`elevenlabsAgentService.ts`). The correct value is only knowable once the route exists.
+Split into five increments, because the views have nothing in common with each other beyond being
+views: the routes and the already-landed handlers (10a), campaigns (10b), the FE admin surface —
+HubSpot config, voice prompts, the DNC registry (10c), the funnel and its analytics (10d), and the
+backfill commands (10e).
+
+#### 10a — the route table, the request adapter, and the landed handlers' views (~250 lines) — ✅ DONE
+
+`urls.py` (99) · `views/__init__.py` (52) · `views/task_cron_job.py` (40) ·
+`views/initiate_outbound_webhook.py` (43) · the view classes of `elevenlabs_webhook.py`,
+`conversation_init_webhook.py`, `email_webhook.py`, `email_compliance.py`, and
+`OutboundCallLLMView` from `call_llm_outbound.py`.
+
+`urls.py` becomes a first-match ORDERED TABLE in `outbound/http/routes.ts` plus one Next.js catch-all
+adapter, rather than thirty route directories. Keeping it a list keeps Django's own resolution order
+explicit and testable; file-based routing would bury the same information in framework precedence
+rules. Every path is preserved verbatim under the `/api/outbound/` mount, trailing slashes included —
+the provider webhook URLs are configured against them by hand and the unsubscribe links in
+already-delivered mail point at `/unsub/` permanently.
+
+**The table lists only routes whose views exist.** An absent path 404s, which is honest; a stubbed one
+would answer 200 with a lie. The remaining entries land with their views in 10b–10e.
+
+**The open question is settled: `CONVERSATION_INIT_PATH` now points at the outbound route.** In a
+deployment running both apps the source's inbound path is a judgement call. Here it is not — this port
+has no inbound app, so the source's value resolves to a 404 at `baseUrl()` and a provisioned agent
+would get no pre-call context at all. See the deliberate-divergences section.
 
 ## Deferral ledger
 
@@ -417,6 +455,18 @@ Recorded here and in the relevant module docstring.
   cron implements its own overdue-safe filter.
 - **Holiday detection uses `date-holidays`**, not the Python `holidays` package (Phase 2). Fail-open
   contract and federal/state split preserved; exact date parity is not guaranteed and not asserted.
+- **`CONVERSATION_INIT_PATH` points at the OUTBOUND route** (Phase 10a), where the source points at
+  `/inbound_agent/voice-agent/elevenlabs/conversation-init`. This port has no inbound app, so the
+  source's value is a guaranteed 404 at `baseUrl()` and a provisioned agent would fetch no pre-call
+  context at all — worse than the source's own working-but-wrong endpoint. There is exactly one
+  conversation-init handler here, and the caller's log line says it is attaching _the_ one.
+- **`urls.py` becomes an ordered route table plus one catch-all adapter** (Phase 10a), not thirty
+  Next.js route directories. Django resolves `urlpatterns` first-match; a list preserves that ordering
+  as something a reader and a test can check. Paths and `name=` values are verbatim.
+- **A non-empty body with an unsupported `Content-Type` parses as JSON or yields `{}`** (Phase 10a),
+  where DRF raises `UnsupportedMediaType` → 415. Providers misdeclare content types routinely, and a
+  415 returned to a webhook is retried — retrying a body that will never parse is a loop, not a
+  recovery. Every view already handles a field it cannot find.
 - **The CNAM gate is ported but not called** (Phase 4). `phoneScreening.decide` is intact and tested;
   CNAM returned `"unknown"` for very nearly every number, which in `business_only` mode blocked
   almost every DNC-clean lead. Re-enabling is one line.
