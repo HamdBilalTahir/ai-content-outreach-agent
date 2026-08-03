@@ -424,13 +424,11 @@ describe('the provider webhook attach', () => {
     expect(await attachOutboundPostCallWebhookToAgent(AGENT)).toBe(false);
 
     fetchMock.mockReset();
-    fetchMock
-      .mockResolvedValueOnce(okGet({}))
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 422,
-        text: async () => 'bad',
-      });
+    fetchMock.mockResolvedValueOnce(okGet({})).mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      text: async () => 'bad',
+    });
     expect(await attachOutboundPostCallWebhookToAgent(AGENT)).toBe(false);
 
     fetchMock.mockReset();

@@ -63,10 +63,12 @@ forced them are the expensive part to rediscover.
 | 10b   | Campaigns + chat pause/resume views               | ~227         | `ed263a7` |
 | 10c¹  | HubSpot admin + audience-preview views            | ~270         | `f43228d` |
 | 10c²  | Voice admin views + the DNC area-code registry    | ~370         | `da3b615` |
-| 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
+| 10d¹  | Deal-analytics read layer + the funnel view       | ~425         | —         |
+| 10d²  | The attribution engine + its scan endpoint        | ~405         | —         |
+| 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **1,959 tests / 47 suites**, `tsc` and `eslint` clean.
+Current: **2,031 tests / 49 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -113,6 +115,26 @@ Current: **1,959 tests / 47 suites**, `tsc` and `eslint` clean.
    absent from the plan entirely — the `management/commands/` line describes "7 backfills +
    `reconcile_stale_calls`", which is an accurate count of the `backfill_*` files and silently omits the
    ninth. A scope line written as a count is a scope line that cannot be checked against `ls`.
+
+9. **The source repo is a MOVING TARGET, and Phase 10d's real scope is ~1,270 lines, not ~330.** Reading
+   `views/deal_funnel.py` before starting 10d surfaced a whole deal-analytics subsystem the plan never
+   enumerated: `services/deal_attribution.py` (311) with `views/deal_conversion.py` (55) and ~340 lines of
+   analytics reads inside `services/hubspot.py`, plus `services/deal_timeline.py` (393) with
+   `views/deal_timeline.py` (47) and an `analytics/deal-timeline/` route.
+
+   This one is **not** a survey failure like revision 8. `git log` on the source dates the attribution
+   commit to **2026-07-31** and the timeline commit to **2026-08-03** — both landed upstream _while this
+   port was in flight_, after the plan's Phase 10 scope line was written. Three days earlier, neither
+   file existed. `urls.py` itself grew from 101 to 104 lines between two reads in the same session.
+
+   **Decision: port what the source contains now**, rather than freezing at the snapshot the plan was
+   written against. Freezing would ship a port missing a live dashboard endpoint the FE already calls,
+   and "the plan is older than the code" is not a reason to omit working features. 10d splits into three.
+
+   The general lesson is different from every earlier revision: those were about reading the source more
+   carefully. This one is about the source not holding still. A line count in a plan is a snapshot, and a
+   long port needs to re-survey the tree at each phase boundary rather than trusting a figure written
+   weeks earlier. Re-checked at 10d; worth re-checking before 10e.
 
 Expect more of these. The source's import graph is not the directory structure. Note the direction of
 revision 5: a phase can be blocked by a phase that comes _after_ it, and the fix is to re-sequence, not
@@ -487,6 +509,33 @@ untouched, so it never claims a prompt the provider is not serving — and the f
 because the fault was upstream and that is what tells the FE whether a retry is worth anything. The
 webhook re-attach after the sync is best-effort for the opposite reason: the prompt is saved and the
 agent exists either way, and the next sync fixes it.
+
+#### 10d¹ — the deal-analytics read layer and the funnel view (~425 lines) — ✅ DONE
+
+The analytics half of `services/hubspot.py` as `outbound/services/dealAnalytics.ts`, plus
+`views/deal_funnel.py` as `outbound/http/analyticsViews.ts`. Thirty routes.
+
+Its own module rather than more of `hubspot.ts`: this is a read-only reporting layer, nothing in it
+writes to HubSpot, and its consumers are dashboard endpoints rather than the agent.
+
+**The funnel's counts come from FIRESTORE, not from a HubSpot deal search.** A prospect the agent engaged
+may convert via ANOTHER rep — the deal is created on the same contact but without the agent's
+`lead_source` tag, so a tag-filtered search reads zero for work the agent caused. Only the stage SHAPE
+(labels, order, won/lost, `is_entry`) is read live from HubSpot. The consequence to know: the counts are
+as of the last attribution scan, not as of this instant.
+
+**Three exclusions, each of which would otherwise inflate the funnel.** A never-contacted chat (a deal on
+that contact was made by a rep directly — `stage` becomes `Contacted` the moment a call or email fires,
+so anything still at `New`/absent is local proof the AI never reached out); an archived chat (dead, and
+the FE already drops it from the inbox and drill lists); and duplicate deals (one contact can map to
+several chats, so the scan dedupes by `deal_id` before counting).
+
+**Won/lost is classified by LABEL, in one place.** The funnel, the timeline, and the attribution stage
+sync all derive it from `stageType`, so getting it right fixes three consumers — and getting it wrong
+breaks all three identically.
+
+**Every funnel failure is a reported `error`, never an empty chart**, because an empty funnel and an
+unreachable pipeline look the same to whoever is reading the dashboard.
 
 ## Deferral ledger
 

@@ -48,6 +48,7 @@ import {
   hubspotListsView,
   hubspotSearchContactsView,
 } from './hubspotViews';
+import { dealFunnelView } from './analyticsViews';
 import {
   dncAreaCodeDeleteView,
   dncAreaCodesListView,
@@ -250,6 +251,12 @@ export const routes: Route[] = [
     name: 'outbound_campaign_detail',
     path: 'campaigns/:campaign_id/',
     methods: { GET: campaignDetailView, POST: campaignActionView },
+  },
+  // Dashboard funnel — deal counts per pipeline stage (filters: campaign, source, date, record_type).
+  {
+    name: 'outbound_deal_funnel',
+    path: 'analytics/deal-funnel/',
+    methods: { GET: dealFunnelView },
   },
   // FE admin: the FTC DNC area-code registry (which area codes our SAN can scrub) — GET/POST/DELETE.
   {

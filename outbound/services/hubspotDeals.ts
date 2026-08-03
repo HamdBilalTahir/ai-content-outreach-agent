@@ -248,15 +248,12 @@ export async function updateDealStage(
   stageId: string
 ): Promise<boolean> {
   try {
-    const resp = await fetch(
-      `${HUBSPOT_BASE}/crm/v3/objects/deals/${dealId}`,
-      {
-        method: 'PATCH',
-        headers: hsHeaders(token),
-        body: JSON.stringify({ properties: { dealstage: stageId } }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      }
-    );
+    const resp = await fetch(`${HUBSPOT_BASE}/crm/v3/objects/deals/${dealId}`, {
+      method: 'PATCH',
+      headers: hsHeaders(token),
+      body: JSON.stringify({ properties: { dealstage: stageId } }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
     if (resp.status === 200 || resp.status === 201) return true;
     console.error(
       `[HS] update deal ${resp.status}: ${(await resp.text()).slice(0, 200)}`
@@ -285,7 +282,12 @@ export async function logHubspotActivity(
       .set({
         timestamp: new Date(),
         kind: 'tool_call',
-        toolCall: { toolName, input: input ?? {}, result: result ?? {}, status },
+        toolCall: {
+          toolName,
+          input: input ?? {},
+          result: result ?? {},
+          status,
+        },
       });
   } catch (e) {
     console.warn(`[HS] activity log failed (${toolName}): ${e}`);
@@ -306,7 +308,10 @@ export async function findOrCreateCompany(
   domain?: string | null
 ): Promise<string | null> {
   const nm = String(name ?? '').trim();
-  const dom = String(domain ?? '').trim().toLowerCase() || null;
+  const dom =
+    String(domain ?? '')
+      .trim()
+      .toLowerCase() || null;
   if (!nm && !dom) return null;
   try {
     // Domain is the stronger key: two companies can share a name, not a domain.
@@ -377,10 +382,7 @@ export async function associateContactCompany(
 /** The deal's display name: person — vehicle — company, falling back to the email. */
 export function dealname(memory: ChatMemory): string {
   const m = memory as Record<string, unknown>;
-  const name = [m.first_name, m.last_name]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  const name = [m.first_name, m.last_name].filter(Boolean).join(' ').trim();
   const vehicle = [m.year, m.make, m.model]
     .filter(Boolean)
     .map(String)
@@ -389,7 +391,7 @@ export function dealname(memory: ChatMemory): string {
   const parts = [name, vehicle, m.company].filter(Boolean) as string[];
   return parts.length > 0
     ? parts.join(' — ')
-    : ((m.customer_email as string) || 'Outbound opportunity');
+    : (m.customer_email as string) || 'Outbound opportunity';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -550,7 +552,7 @@ export async function maybeAddDealConversationNote(
     const chatData = (snap.data() ?? {}) as Record<string, unknown>;
     if (chatData.playground) return;
 
-    const memory = ((chatData.memory ?? {}) as ChatMemory) as Record<
+    const memory = (chatData.memory ?? {}) as ChatMemory as Record<
       string,
       unknown
     >;
@@ -600,7 +602,9 @@ export async function maybeAddDealConversationNote(
       ? `${name} demo booked — ${demo}`
       : `${name} — Lead conversation`;
 
-    if (await logHubspotDealNote(token, dealId, `<b>${title}</b><br><br>${brief}`)) {
+    if (
+      await logHubspotDealNote(token, dealId, `<b>${title}</b><br><br>${brief}`)
+    ) {
       await setMemory(chatId, { [DEAL_NOTE_AT_KEY]: new Date().toISOString() });
       console.log(
         `[HS] deal conversation note added chat=${chatId} deal=${dealId}`
@@ -652,7 +656,9 @@ export async function syncHubspotStage(
       syncedStage in STAGE_RANK &&
       STAGE_RANK[stage] <= STAGE_RANK[syncedStage]
     ) {
-      console.log(`[HS] skip backward sync chat=${chatId}: ${syncedStage} -> ${stage}`);
+      console.log(
+        `[HS] skip backward sync chat=${chatId}: ${syncedStage} -> ${stage}`
+      );
       return;
     }
 
@@ -671,7 +677,10 @@ export async function syncHubspotStage(
     const envProp = cfg.env_property;
     // record_type may live in memory OR at the chat-doc top level — accept either.
     const envVal = String(
-      memory.record_type ?? chatData.record_type ?? cfg.env_default_value ?? 'Real'
+      memory.record_type ??
+        chatData.record_type ??
+        cfg.env_default_value ??
+        'Real'
     );
 
     let contactId = memory.hubspot_contact_id as string | undefined;
@@ -684,7 +693,9 @@ export async function syncHubspotStage(
     const ensureContact = async (): Promise<string | undefined> => {
       if (contactId) return contactId;
 
-      const email = String(memory.customer_email ?? '').trim().toLowerCase();
+      const email = String(memory.customer_email ?? '')
+        .trim()
+        .toLowerCase();
       if (email) {
         const found = await findContactByEmail(token, email);
         if (found) contactId = found;
@@ -903,8 +914,15 @@ export async function ensureCompanyForContact(
   // Free-mail tells us nothing about the employer, so associate by name only.
   if (domain && FREE_MAIL_DOMAINS.has(domain)) domain = null;
 
-  const companyId = await findOrCreateCompany(token, m.company as string, domain);
-  if (companyId && (await associateContactCompany(token, contactId, companyId))) {
+  const companyId = await findOrCreateCompany(
+    token,
+    m.company as string,
+    domain
+  );
+  if (
+    companyId &&
+    (await associateContactCompany(token, contactId, companyId))
+  ) {
     await logHubspotActivity(
       chatId,
       'hubspot_company_associated',

@@ -107,8 +107,8 @@ function activities(): Array<Record<string, unknown>> {
 }
 
 function activityNames(): string[] {
-  return activities().map(
-    (a) => String((a.toolCall as Record<string, unknown>).toolName)
+  return activities().map((a) =>
+    String((a.toolCall as Record<string, unknown>).toolName)
   );
 }
 
@@ -181,7 +181,10 @@ describe('syncHubspotStage guards', () => {
   });
 
   test('a BACKWARD move is refused, so hs_lead_status is never downgraded', async () => {
-    seedChat({ stage: 'Contacted', memory: { _hubspot_synced_stage: 'Engaged' } });
+    seedChat({
+      stage: 'Contacted',
+      memory: { _hubspot_synced_stage: 'Engaged' },
+    });
     await syncHubspotStage(CHAT);
     expect(fetchMock).not.toHaveBeenCalled();
     // The already-synced marker is untouched.
@@ -189,7 +192,10 @@ describe('syncHubspotStage guards', () => {
   });
 
   test('a FORWARD move proceeds', async () => {
-    seedChat({ stage: 'Engaged', memory: { _hubspot_synced_stage: 'Contacted' } });
+    seedChat({
+      stage: 'Engaged',
+      memory: { _hubspot_synced_stage: 'Contacted' },
+    });
     await syncHubspotStage(CHAT);
     expect(memory()._hubspot_synced_stage).toBe('Engaged');
   });
@@ -205,15 +211,19 @@ describe('syncHubspotStage guards', () => {
       },
     });
     await syncHubspotStage(CHAT);
-    expect(calls().some((c) => c.startsWith('PATCH') && c.includes('/deals/'))).toBe(
-      true
-    );
+    expect(
+      calls().some((c) => c.startsWith('PATCH') && c.includes('/deals/'))
+    ).toBe(true);
     expect(memory()._hubspot_synced_stage).toBe('Lost');
   });
 
   test('an unconfigured agent is a silent no-op', async () => {
     // Connecting the action IS the on-switch; there is no separate toggle.
-    store.set(`agents/${AGENT}/actions/a1`, { status: 'active', provider: 'hubspot_v2', auth: {} });
+    store.set(`agents/${AGENT}/actions/a1`, {
+      status: 'active',
+      provider: 'hubspot_v2',
+      auth: {},
+    });
     await syncHubspotStage(CHAT);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -306,7 +316,8 @@ describe('a contact-stage sync', () => {
     // A campaign against records that already existed must not imply we created them.
     fetchMock.mockImplementation(async (url: string) => {
       const u = String(url);
-      if (u.includes('/contacts/search')) return ok({ results: [{ id: 'existing' }] });
+      if (u.includes('/contacts/search'))
+        return ok({ results: [{ id: 'existing' }] });
       return ok({}, 200);
     });
     await syncHubspotStage(CHAT);
@@ -319,16 +330,18 @@ describe('a contact-stage sync', () => {
     seedChat({ memory: { hubspot_contact_id: CONTACT } });
     await syncHubspotStage(CHAT);
     // No POST to create, and the only contact write is the stage PATCH.
-    const contactWrites = calls().filter((c) => c.includes('/objects/contacts'));
+    const contactWrites = calls().filter((c) =>
+      c.includes('/objects/contacts')
+    );
     expect(contactWrites.every((c) => c.startsWith('PATCH'))).toBe(true);
   });
 
   test('a Note is written so HubSpot’s last-activity date reflects the push', async () => {
     await syncHubspotStage(CHAT);
     const note = bodyOf('/objects/notes');
-    expect(String((note.properties as Record<string, unknown>).hs_note_body)).toContain(
-      'prospect stage updated to <b>Contacted</b>'
-    );
+    expect(
+      String((note.properties as Record<string, unknown>).hs_note_body)
+    ).toContain('prospect stage updated to <b>Contacted</b>');
   });
 });
 
@@ -347,7 +360,7 @@ describe('a Lead sync', () => {
       dealstage: 'stage_lead',
     });
     // The deal is associated to its contact on creation.
-    expect((deal.associations as unknown[])).toHaveLength(1);
+    expect(deal.associations as unknown[]).toHaveLength(1);
     expect(memory().hubspot_deal_id).toBe(DEAL);
     expect(activityNames()).toContain('hubspot_deal_created');
   });
@@ -369,7 +382,10 @@ describe('a Lead sync', () => {
     // HubSpot cannot filter a deal by its contact's property, so the funnel needs it here.
     seedChat({ stage: 'Lead', memory: { campaign_id: 'camp_9' } });
     await syncHubspotStage(CHAT);
-    const props = bodyOf('/objects/deals').properties as Record<string, unknown>;
+    const props = bodyOf('/objects/deals').properties as Record<
+      string,
+      unknown
+    >;
     expect(props[DEAL_CAMPAIGN_PROP]).toBe('camp_9');
   });
 
@@ -398,9 +414,11 @@ describe('a Lead sync', () => {
       memory: { hubspot_contact_id: CONTACT, hubspot_deal_id: DEAL },
     });
     await syncHubspotStage(CHAT);
-    expect(calls().some((c) => c === `POST ${'https://api.hubapi.com'}/crm/v3/objects/deals`)).toBe(
-      false
-    );
+    expect(
+      calls().some(
+        (c) => c === `POST ${'https://api.hubapi.com'}/crm/v3/objects/deals`
+      )
+    ).toBe(false);
     expect(memory()._hubspot_synced_stage).toBe('Lead');
   });
 
@@ -424,9 +442,9 @@ describe('a Lost sync', () => {
     const patch = fetchMock.mock.calls.find((c) =>
       String(c[0]).includes('/objects/deals/')
     );
-    expect(JSON.parse((patch![1] as { body: string }).body).properties.dealstage).toBe(
-      'stage_lost'
-    );
+    expect(
+      JSON.parse((patch![1] as { body: string }).body).properties.dealstage
+    ).toBe('stage_lost');
     expect(activityNames()).toContain('hubspot_deal_updated');
   });
 
@@ -470,7 +488,9 @@ describe('the deal brief', () => {
   test('the transcript is oldest-first and EXCLUDES internal notes', async () => {
     seedTranscript();
     const t = await recentTranscript(CHAT, 10);
-    expect(t).toBe('CUSTOMER: We run 3 rooftops.\nAGENT: Great — Thursday at 10?');
+    expect(t).toBe(
+      'CUSTOMER: We run 3 rooftops.\nAGENT: Great — Thursday at 10?'
+    );
     // Internal notes are our own annotations, not conversation.
     expect(t).not.toContain('internal note');
   });
@@ -520,7 +540,9 @@ describe('the deal brief', () => {
 
   test('the LLM is RETRIED once — the note is written only once per deal', async () => {
     seedTranscript();
-    llm.mockResolvedValueOnce('').mockResolvedValueOnce('<b>Prospect:</b> Jane');
+    llm
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('<b>Prospect:</b> Jane');
     expect(await generateDealBrief(CHAT, {} as ChatMemory)).toBe(
       '<b>Prospect:</b> Jane'
     );
@@ -549,9 +571,9 @@ describe('maybeAddDealConversationNote', () => {
   test('posts the brief once and stamps the marker', async () => {
     await maybeAddDealConversationNote(CHAT, AGENT);
     const note = bodyOf('/objects/notes');
-    expect(String((note.properties as Record<string, unknown>).hs_note_body)).toContain(
-      'Wants a demo.'
-    );
+    expect(
+      String((note.properties as Record<string, unknown>).hs_note_body)
+    ).toContain('Wants a demo.');
     expect(typeof memory()._hubspot_deal_note_at).toBe('string');
   });
 
