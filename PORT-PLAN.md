@@ -56,7 +56,7 @@ forced them are the expensive part to rediscover.
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | `3567aa5` |
 | 9a    | HubSpot client core + contacts                    | ~600         | `619623a` |
 | 9b    | Stage sync + deals                                | ~500         | `b4a8f34` |
-| 9c    | Meetings, slots, booking                          | ~350         | PENDING   |
+| 9c    | Meetings, slots, booking                          | ~350         | `580ded9` |
 | 9d    | Audiences, lists, search                          | ~500         | —         |
 | 9e    | Analytics, discovery, tools + views               | ~750         | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
