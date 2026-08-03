@@ -58,7 +58,7 @@ forced them are the expensive part to rediscover.
 | 9b    | Stage sync + deals                                | ~500         | `b4a8f34` |
 | 9c    | Meetings, slots, booking                          | ~350         | `580ded9` |
 | 9d    | Audiences, lists, search                          | ~580         | `d1e3424` |
-| 9e    | Discovery, meeting tools, `ensureMeetingHost`     | ~600         | PENDING   |
+| 9e    | Discovery, meeting tools, `ensureMeetingHost`     | ~600         | `1fcc845` |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
 Current: **1,714 tests / 39 suites**, `tsc` and `eslint` clean.
@@ -369,6 +369,10 @@ plus `voice_settings` 150 and `voice_connect` 53 re-assigned from Phase 7b²c) �
 `management/commands/` (7 backfills + `reconcile_stale_calls`)
 
 Thin once everything beneath it exists, which is why it is last.
+
+Also lands here from Phase 9e: `views/deal_funnel.py` (84) and `views/hubspot_discovery.py` (256), plus
+the deal-funnel ANALYTICS the funnel view is the only consumer of (`deal_funnel_counts`, the
+stage-attribution scan, and the deal-read helpers — roughly 190 lines of `services/hubspot.py`).
 
 **One open question to settle here:** the provisioner points agents at the INBOUND conversation-init
 path while the outbound app mounts its own equivalent (see `CONVERSATION_INIT_PATH` in
