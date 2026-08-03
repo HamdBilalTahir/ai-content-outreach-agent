@@ -59,7 +59,7 @@ forced them are the expensive part to rediscover.
 | 9c    | Meetings, slots, booking                          | ~350         | `580ded9` |
 | 9d    | Audiences, lists, search                          | ~580         | `d1e3424` |
 | 9e    | Discovery, meeting tools, `ensureMeetingHost`     | ~600         | `1fcc845` |
-| 10a   | Route table, request adapter, webhook/cron views  | ~250         | —         |
+| 10a   | Route table, request adapter, webhook/cron views  | ~250         | `d75083c` |
 | 10b   | Campaigns + chat pause/resume views               | ~227         | —         |
 | 10c   | HubSpot views, voice admin views, DNC registry    | ~530         | —         |
 | 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
