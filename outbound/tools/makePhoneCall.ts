@@ -34,7 +34,7 @@
  *
  * ## Deferred
  *
- * The Vapi provider path, the HubSpot availability injection, and `ensureMeetingHost` are not here; see
+ * The Vapi provider path and `ensureMeetingHost` are not here; see
  * the notes at each call site. The `make_phone_call_from_number` variant and the S3 recording upload
  * land with the rest of the voice phase.
  */
@@ -82,6 +82,7 @@ import {
   releaseVoiceSlot,
   tryReserveVoiceSlot,
 } from '../services/voiceConcurrency';
+import { buildAvailabilityBlock } from '../services/hubspotMeetings';
 import { registerTool } from '../llm/toolRegistry';
 import { envStr } from '../config';
 import { ELEVENLABS_BASE_API } from '../services/elevenlabs';
@@ -740,9 +741,21 @@ export async function parseAndRunMakePhoneCall(
     instructions = instructions ? `${instructions}\n\n${block}` : block;
   }
 
-  // The availability block belongs here — the agent cannot fetch slots mid-call — but it needs the CRM
-  // scheduling layer, which arrives with the HubSpot phase. A REMINDER call would skip it anyway: an
-  // already-booked call must never offer new times.
+  // Real bookable times, because the voice agent cannot fetch slots mid-call and will otherwise invent
+  // them. Skipped for a REMINDER call: an already-booked prospect must never be offered new times.
+  if (!booked) {
+    try {
+      const block = await buildAvailabilityBlock(
+        chatOwnerAgentId ?? agentId,
+        chatMemory
+      );
+      if (block) {
+        instructions = instructions ? `${instructions}\n\n${block}` : block;
+      }
+    } catch (e) {
+      console.warn(`[MAKE_PHONE_CALL] availability inject skipped: ${e}`);
+    }
+  }
 
   // GATE 4 — the voice concurrency cap. Reserved LAST, because it is the only gate that consumes a
   // resource. No hot-prospect bypass: the cap is absolute.

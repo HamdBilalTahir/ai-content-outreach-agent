@@ -6,6 +6,27 @@
 
 ---
 
+> ### Outbound agent port — Phase 9c: meetings, slots, and booking
+>
+> - **What changed:** Ported the meeting layer as `outbound/services/hubspotMeetings.ts` — availability fetch and formatting, booking, the `.ics` invite, `finalizeMeetingBooking`, the review's slot matcher, and a shared availability block. **Three seams close and are wired:** the review's `resolveBookingSlot` now defaults to the real matcher, and both voice availability injections (outbound dial and inbound conversation-init) are live.
+> - **Three filters decide what may be offered, and each fixes a bug the source names.** They get individual tests because each would silently regress:
+>   1. **15-minute durations only** — the outbound demo is a 15-minute meeting, so the link's 30- and 60-minute availability is ignored entirely. Both what is shown and what is booked stay 15.
+>   2. **A 30-minute lead buffer** — without it the agent offered slots starting *now* (the source records a "Thu 3:15/3:30" bug). There has to be time to actually place the call.
+>   3. **Never TODAY** — `d <= today` excludes the current day completely, because same-day calls put the customer on the spot and read as sloppy. The source records a "Monday July 6 = today" bug here.
+> - **Booking THROWS; everything after it does not.** `bookMeeting` raises on a non-2xx, because a failed booking must never read as success — the caller has to tell the customer. But every step of `finalizeMeetingBooking` is individually wrapped, because by then **the meeting exists in HubSpot**: a local write failure must neither undo nor hide it. Tested by failing the Lead sync and asserting the meeting record and link survive.
+> - **`finalizeMeetingBooking` deliberately sends NO confirmation email**, and that is the fix for a real duplicate. The skill sends exactly one, as its last step, once `hubspot_meeting_link` is in memory. Sending here too would produce either a duplicate or — worse — a linkless email arriving *before* the link is known. The link is guaranteed non-empty (falling back to the scheduling page) precisely because that email waits on it.
+> - **The join link is checked under four different names.** HubSpot names it `webConferenceUrl`, `conferenceUrl`, `joinUrl`, or `location` depending on the meeting type; missing one blanks the confirmation link whenever a conference URL exists under a different key. All four asserted.
+> - **The slot matcher is a pure MATCHER and must never re-judge the outcome.** `classifyCallOutcome` already decided the call was a demo. This only answers "which offered slot did they agree to", and matching is deliberately lenient — closest slot on the agreed day — because the agent read times aloud and the prospect answered in prose. Demanding exactness would fail most real bookings. `resolved: false` still books: a demo is never downgraded to a callback.
+> - **`formatSlotsForVoice` lists every time, not a selection**, because the voice agent has no tool to fetch slots mid-call. Capping there would silently narrow the prospect's options; the prompt decides which few to suggest.
+> - **A second month is fetched only when the window actually crosses one.** The endpoint is per-month, so checking first keeps the common case at a single request.
+> - **Files:**
+>   - `outbound/services/hubspotMeetings.ts`
+>   - `outbound/tools/reviewCallTranscript.ts` (resolver now defaults to the real matcher, still injectable), `outbound/tools/makePhoneCall.ts` and `outbound/services/voiceWebhooks.ts` (availability injected; the dial skips it for an already-booked reminder call, which must never offer new times)
+>   - `outbound/__tests__/services/hubspotMeetings.test.ts`
+> - **Verification:** 1,616 tests across 37 suites (37 new), `tsc --noEmit` clean, `eslint outbound/` clean. Wiring three more live CRM seams again broke nothing, for the same reason as 9b.
+>
+> ---
+>
 > ### Outbound agent port — Phase 9b: stage sync, deals, and the deal brief
 >
 > - **What changed:** Ported `sync_hubspot_stage` (216 lines on its own), the deal create/stage-update path, the company association, and the rep-facing deal brief as `outbound/services/hubspotDeals.ts` — **and wired the closed seams into all six call sites**: the review orchestrator (deal note, Engaged sync, secondary email), the email webhook, the conversation-init webhook, and `mark_prospect_lost`. Three ledger rows close: `syncHubspotStage`, `maybeAddDealConversationNote`, and 9a's `preservePriorEmailOnContact` is now actually called.

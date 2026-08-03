@@ -56,12 +56,12 @@ forced them are the expensive part to rediscover.
 | 8b⁴   | Turn entry (`call_llm_outbound`) + cron hookup    | ~1,105       | `3567aa5` |
 | 9a    | HubSpot client core + contacts                    | ~600         | `619623a` |
 | 9b    | Stage sync + deals                                | ~500         | `b4a8f34` |
-| 9c    | Meetings, slots, booking                          | ~350         | —         |
+| 9c    | Meetings, slots, booking                          | ~350         | PENDING   |
 | 9d    | Audiences, lists, search                          | ~500         | —         |
 | 9e    | Analytics, discovery, tools + views               | ~750         | —         |
 | 10    | HTTP surface & backfills                          | ~1,500       | —         |
 
-Current: **1,579 tests / 36 suites**, `tsc` and `eslint` clean.
+Current: **1,616 tests / 37 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -320,11 +320,13 @@ sync, secondary email), the email webhook, the conversation-init webhook, and `m
 production caller is the inbound web turn — the THIRD module inside `outbound_agent/` to do this (see
 revision 7).
 
-#### 9c — meetings, slots, booking (~350 lines)
+#### 9c — meetings, slots, booking (~350 lines) — ✅ DONE
 
-Availability fetch and formatting, booking, the ICS invite, `finalize_meeting_booking`. Closes the
-review's injected `resolveBookingSlot`, `makePhoneCall`'s availability injection, and the
-conversation-init slot injection.
+Availability fetch and formatting, booking, the ICS invite, `finalize_meeting_booking`, the review's
+slot matcher, and a shared availability block. **All three seams closed and wired**: the review's
+`resolveBookingSlot` defaults to the real matcher (still injectable, which keeps its tests off a live
+CRM), and both voice availability injections are live — the outbound dial skips it for an already-booked
+reminder call, which must never offer new times.
 
 #### 9d — audiences, lists, search (~500 lines)
 
@@ -373,14 +375,14 @@ Every function knowingly absent from the port, and where it lands. Nothing else 
 | `chat.ensureMeetingHost`                    | 3      | 9      | `hubspot.resolveHubspotConfig`, `resolveOwnerName`       |
 | ~~`chat.finalizeUnresolvedCall`~~           | 3      | 5 ✅   | landed early — deps arrived in Phase 4/5                 |
 | ~~`chat.reconcileStalePendingCalls`~~       | 3      | 5 ✅   | landed early, same reason                                |
-| `callScope` (voice-prompt half)             | 2      | 7      | voice prompt assembly                                    |
-| `reputation.emailDailySummary`              | 4      | 6      | `sendgridMail.resolveSendgridConfig`                     |
-| `conversationSummary`                       | 5      | 8      | `llm.ask.generateText`                                   |
+| ~~`callScope` (voice-prompt half)~~         | 2      | 7a ✅  | closed — the voice half landed with the foundation       |
+| ~~`reputation.emailDailySummary`~~          | 4      | 6 ✅   | closed — landed with the send path                       |
+| ~~`conversationSummary`~~                   | 5      | 7b¹ ✅ | closed — landed with the review toolkit, not Phase 8     |
 | enroll's 6 HubSpot stamps                   | 5      | 9      | `services/hubspot`                                       |
-| `cron` email daily summary                  | 5      | 6      | `sendgridMail.resolveSendgridConfig`                     |
+| ~~`cron` email daily summary~~              | 5      | 6 ✅   | closed — wired into the cron with the send path          |
 | ~~`cron` turn runner (injected)~~           | 5      | 8b⁴ ✅ | closed — defaults to `runOutboundLlm`, still overridable |
 | `resolveAudiencePage` HubSpot sources       | 5      | 9      | HubSpot contact-fetch layer                              |
-| review's `resolveBookingSlot` (injected)    | 7b²b²  | 9      | `hubspot.getHubspotSlots` — a parameter, not absent      |
+| ~~review's `resolveBookingSlot`~~           | 7b²b²  | 9c ✅  | closed — defaults to the real matcher, still injectable  |
 | ~~review's `maybeAddDealConversationNote`~~ | 7b²b²  | 9b ✅  | closed — retried after the summary caches                |
 | ~~review's `preservePriorEmailOnContact`~~  | 7b²b²  | 9a ✅  | closed — appends a secondary, keeps the prior address    |
 | ~~review's `syncHubspotStage`~~             | 7b²b²  | 9b ✅  | closed — wired at all six call sites                     |

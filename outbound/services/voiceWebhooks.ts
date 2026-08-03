@@ -74,6 +74,7 @@ import { deletePendingTasksByType } from './scheduling';
 import { releaseVoiceSlot } from './voiceConcurrency';
 import { fetchConversationFromElevenlabs } from './elevenlabs';
 import { syncHubspotStage } from './hubspotDeals';
+import { buildAvailabilityBlock } from './hubspotMeetings';
 import { formatElevenlabsTranscript } from '../tools/reviewCallTranscript';
 import type { BedrockMessage, ChatMemory } from '../types';
 
@@ -641,9 +642,16 @@ export async function handleConversationInitWebhook(
       localScope = `${localScope}\n\nCONVERSATION SUMMARY:\n${summary}`;
     }
 
-    // Phase 9: the HubSpot availability injection, so the agent offers BOOKABLE times. The voice agent
-    // has no tools to fetch slots mid-call, so without it the model invents times — the same seam
-    // `makePhoneCall` carries for the outbound direction.
+    // Real bookable times: the voice agent has no tool to fetch slots mid-call, so without this the
+    // model invents them. The same block `makePhoneCall` injects for the outbound direction.
+    try {
+      const block = await buildAvailabilityBlock(agentId, memory);
+      if (block) localScope = `${localScope}\n\n${block}`;
+    } catch (e) {
+      console.warn(
+        `[OB_INIT] inbound slot injection failed for ${chatId}: ${e}`
+      );
+    }
 
     const dynamicVariables: Record<string, unknown> = {};
     for (const varName of Object.keys(dynConfig)) {

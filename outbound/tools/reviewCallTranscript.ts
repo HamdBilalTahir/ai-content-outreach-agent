@@ -55,12 +55,11 @@
  *
  * ## Deferred
  *
- * The HubSpot slot matcher arrives with Phase 9; it is injected as `resolveBookingSlot` (see
- * `BookingSlotResolver`). With no resolver the demo takes the source's own unmatched path — byte-for-byte
- * what the source does when HubSpot is not configured. `maybeAddDealConversationNote`,
- * `preservePriorEmailOnContact`, and `syncHubspotStage` are also Phase 9; each was best-effort and
- * non-blocking in the source. The Vapi fetcher is not ported, matching `makePhoneCall`: no Vapi dialer
- * exists in this deployment, so no Vapi call can be under review.
+ * The HubSpot slot matcher is injected as `resolveBookingSlot` and DEFAULTS to the real one (Phase 9c);
+ * passing an override is what keeps this module's own tests off a live CRM. An unconfigured HubSpot makes
+ * the matcher return `resolved: false`, and the demo takes the unmatched path — byte-for-byte what the
+ * source does in the same situation. The Vapi fetcher is not ported, matching `makePhoneCall`: no Vapi
+ * dialer exists in this deployment, so no Vapi call can be under review.
  */
 
 import { FieldValue, db } from '../firebase/db';
@@ -86,6 +85,7 @@ import {
   maybeAddDealConversationNote,
   syncHubspotStage,
 } from '../services/hubspotDeals';
+import { resolveAndScheduleBookingTask } from '../services/hubspotMeetings';
 import { ELEVENLABS_BASE_API } from '../services/elevenlabs';
 import {
   classifyCallOutcome,
@@ -367,7 +367,13 @@ export async function parseAndRunReviewCallTranscript(
   input: Record<string, unknown>,
   options: ReviewOptions = {}
 ): Promise<BedrockMessage> {
-  const { chatId = null, metaData = null, resolveBookingSlot } = options;
+  const {
+    chatId = null,
+    metaData = null,
+    // Defaults to the real HubSpot matcher (Phase 9c). Still injectable, which is what keeps the
+    // review's own tests from calling a live CRM.
+    resolveBookingSlot = resolveAndScheduleBookingTask,
+  } = options;
   const fetchCall = options.fetchCall ?? fetchCallFromElevenlabs;
 
   const callId = String(input.call_id ?? '').trim();
@@ -665,7 +671,12 @@ export async function parseAndRunReviewCallTranscript(
             // as a secondary. Never overwrite or delete the prior address.
             if (m.hubspot_contact_id) {
               try {
-                await preservePriorEmailOnContact(chatId, agentId, null, newEmail);
+                await preservePriorEmailOnContact(
+                  chatId,
+                  agentId,
+                  null,
+                  newEmail
+                );
               } catch (e) {
                 console.warn(
                   `[REVIEW] HubSpot secondary-email add failed chat=${chatId}: ${e}`
