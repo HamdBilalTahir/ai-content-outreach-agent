@@ -62,7 +62,7 @@ forced them are the expensive part to rediscover.
 | 10a   | Route table, request adapter, webhook/cron views  | ~250         | `d75083c` |
 | 10b   | Campaigns + chat pause/resume views               | ~227         | `ed263a7` |
 | 10c¹  | HubSpot admin + audience-preview views            | ~270         | `f43228d` |
-| 10c²  | Voice admin views + the DNC area-code registry    | ~370         | —         |
+| 10c²  | Voice admin views + the DNC area-code registry    | ~370         | `da3b615` |
 | 10d   | Deal funnel + attribution + the funnel analytics  | ~330         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
