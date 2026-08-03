@@ -1,7 +1,7 @@
 /**
- * The analytics dashboard endpoints — currently the deal funnel.
+ * The analytics dashboard endpoints — the deal funnel and the attribution scan.
  *
- * Ports `views/deal_funnel.py`. The FE prepends its own Firestore New/Contacted/Engaged counts and
+ * Ports `views/deal_funnel.py` and `views/deal_conversion.py`. The FE prepends its own Firestore New/Contacted/Engaged counts and
  * clumps the intermediate open stages into one column with a per-stage drill-down, so what this returns
  * is the HubSpot half only.
  *
@@ -19,6 +19,8 @@
 import { getAgentActions } from '../firebase/agent';
 import { resolveHubspotConfig } from '../services/hubspot';
 import { dealFunnelCounts } from '../services/dealAnalytics';
+import { runDealAttribution } from '../services/dealAttribution';
+import { requireApiKey } from './apiAuth';
 import { json } from './types';
 import type { OutboundRequest, OutboundResponse } from './types';
 
@@ -93,4 +95,57 @@ export async function dealFunnelView(
       record_type: recordType,
     },
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /analytics/run-deal-attribution/
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Body first, then query — the FE cron posts a body, a manual re-scan is easier as a URL. */
+function param(request: OutboundRequest, key: string): unknown {
+  const fromBody = request.body[key];
+  return fromBody === null || fromBody === undefined
+    ? request.query[key]
+    : fromBody;
+}
+
+/**
+ * Run one bounded page of the conversion scan.
+ *
+ * **The one outbound endpoint behind an API key.** Everything else here is either signature-verified (the
+ * provider webhooks) or FE-facing; this one writes attribution across every outbound chat, so it is
+ * guarded — and the guard fails closed, including when the key is not configured at all.
+ *
+ * A scan failure answers **200 with `success: false`**, for the same reason the cron does: the caller is
+ * a scheduler that retries non-2xx, and this scan has already written attribution to some chats by the
+ * time it faults. The writes are idempotent, so a replay is safe — but a retry storm against a scan that
+ * faults every time is not, and the caller should see the error and stop rather than loop.
+ */
+export async function runDealAttributionView(
+  request: OutboundRequest
+): Promise<OutboundResponse> {
+  const deny = requireApiKey(request);
+  if (deny) return deny;
+
+  try {
+    return json(
+      await runDealAttribution({
+        agentId: (param(request, 'agent_id') as string) || null,
+        campaignId: (param(request, 'campaign_id') as string) || null,
+        cursor: (param(request, 'cursor') as string) || null,
+        limit: param(request, 'limit'),
+        onlyChatId: (param(request, 'only_chat_id') as string) || null,
+        // Truthiness is spelled out because a `dry_run=false` query STRING is truthy in JS. Only these
+        // three spellings enable it, matching the source.
+        dryRun: ['1', 'true', 'yes'].includes(
+          String(param(request, 'dry_run') ?? '')
+            .trim()
+            .toLowerCase()
+        ),
+      })
+    );
+  } catch (e) {
+    console.error(`[DEAL_ATTR] run failed: ${e}`);
+    return json({ success: false, error: String(e) });
+  }
 }

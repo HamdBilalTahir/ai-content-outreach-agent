@@ -6,6 +6,28 @@
 
 ---
 
+> ### Outbound agent port — Phase 10d²: the attribution engine and its scan endpoint
+>
+> - **What changed:** Ported `services/deal_attribution.py` as `outbound/services/dealAttribution.ts`, `views/deal_conversion.py` into `analyticsViews.ts`, and `require_api_key` as `outbound/http/apiAuth.ts`. Thirty-one routes. This is the scan that _writes_ the attribution 10d¹'s funnel reads.
+> - **The two write paths are gated differently, and reversing either one breaks it.** Activities and the memory write-back are **change**-gated, tracked in `memory._attributed_deals` as `{dealId: stageId}` — state-gating them would add another "converted to deal" card to the same chat on every hourly run. The funnel-stage sync is **state**-gated and runs on every scan, comparing the chat's _current_ stage/sub_stage against the target the deal implies rather than reacting to a deal-stage change. That is what makes it self-healing: an already-attributed chat whose promotion was missed — deal sitting at an intermediate stage while the chat still says `Contacted` — is corrected on the next scan instead of waiting for the deal to move again. A change-gated sync could never heal; a state-gated card writer would duplicate forever. Both directions are asserted.
+> - **An unwritten activity card is not recorded as logged, but the memory facts still land.** The source gates the write-back on `activities > 0` **or** `changed`, so a first attribution writes its deal id and stage even when the card failed, while `_attributed_deals` stays empty so the next scan re-cards it. My first test asserted the opposite and the port was right — the deal facts are worth more than the card, and the card catches up.
+> - **A won deal gates on `sub_stage`, not on the stage name.** The Lead-lock means a won prospect stays at stage `Lead` with `sub_stage: crm_won`, so gating on the stage would re-apply the transition forever.
+> - **The primary deal is the most-advanced one**, tie-broken by the latest stage entry, and a deal in an unknown stage ranks below every known one so a deal in another pipeline can never outrank ours. Activities are still written for _every_ deal, so the history stays complete even though the summary fields name one.
+> - **A never-contacted chat is skipped before any HubSpot call.** No write-back, no card, no sync — a deal on that contact was a rep's own work, and attributing it would be false attribution. The filters run in cost order generally, so a page of chats that mostly do not qualify costs almost nothing.
+> - **Each agent's context is resolved once per call, including a FAILED one.** A page of a hundred chats on one agent would otherwise refresh the same OAuth token a hundred times, and a broken agent would be retried per chat.
+> - **`next_cursor` comes back only when the page was FULL.** A short page means the collection is exhausted, which is what lets the caller stop rather than probing one more empty page. `limit` is clamped to 500 and floored at 1 — an unbounded limit from a caller is exactly how the five-minute cron cap gets hit.
+> - **`dry_run` truthiness is spelled out, not inferred.** The string `"false"` is truthy in JS, so a `?dry_run=false` query would otherwise turn the scan into a no-op that reported success — and nobody would notice attribution had stopped. Only `1`/`true`/`yes` enable it, matching the source; asserted across twelve inputs.
+> - **Only the internal-key path of `api_auth` is ported.** The source's second credential is a per-company key resolved through the inbound product's multi-tenant key store; this port has no company registry and no outbound endpoint is company-scoped, so that branch would be an unreachable lookup against a collection that does not exist. It **fails closed, including when the key is unset** — the source is explicit that "open when unconfigured" is how several webhooks in that codebase ended up with their auth commented out. The length check precedes `timingSafeEqual`, which throws on unequal-length buffers, so a short key 401s rather than 500ing.
+> - **The test double now models cursor paging for real.** `startAfter` was a documented no-op and `orderBy('__name__')` sorted on a field that is not in the document data — so a resume test would have looped forever or silently passed on a single page. Both are implemented, with the cursor positioned by **value comparison** rather than by locating the document, so a cursor id deleted between pages still positions the next page correctly. Anything other than `__name__` ordering now **throws**, per the double's rule that an unsupported operation must fail loudly rather than look like passing code.
+> - **Files:**
+>   - `outbound/services/dealAttribution.ts`, `outbound/http/apiAuth.ts`
+>   - `outbound/http/analyticsViews.ts` (adds the scan view), `outbound/http/routes.ts` (one route)
+>   - `outbound/testSupport/mockFirestore.ts` (real cursor paging + `__name__` ordering)
+>   - `outbound/__tests__/services/dealAttribution.test.ts`, `outbound/__tests__/http/apiAuth.test.ts`, `outbound/__tests__/http/analyticsViews.test.ts`, `outbound/__tests__/http/routes.test.ts`
+> - **Verification:** 2,110 tests across 51 suites (79 new), `tsc --noEmit` clean, `eslint` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 10d¹: the deal-analytics read layer and the funnel view
 >
 > - **What changed:** Ported the analytics half of `services/hubspot.py` as `outbound/services/dealAnalytics.ts` and `views/deal_funnel.py` as `outbound/http/analyticsViews.ts`. Thirty routes. The dashboard funnel works.

@@ -17,8 +17,16 @@ jest.mock('../../services/hubspot', () => ({
 jest.mock('../../services/dealAnalytics', () => ({
   dealFunnelCounts: jest.fn(),
 }));
+jest.mock('../../services/dealAttribution', () => ({
+  runDealAttribution: jest.fn(),
+}));
 
-import { dayBoundsMs, dealFunnelView } from '../../http/analyticsViews';
+import {
+  dayBoundsMs,
+  dealFunnelView,
+  runDealAttributionView,
+} from '../../http/analyticsViews';
+import { runDealAttribution } from '../../services/dealAttribution';
 import { getAgentActions } from '../../firebase/agent';
 import { resolveHubspotConfig } from '../../services/hubspot';
 import { dealFunnelCounts } from '../../services/dealAnalytics';
@@ -36,8 +44,36 @@ function req(query: Record<string, string> = {}): OutboundRequest {
   };
 }
 
+const KEY = 'super-secret-internal-key';
+
+/** A POST to the scan endpoint, authorised unless told otherwise. */
+function scanReq(
+  body: Record<string, unknown> = {},
+  query: Record<string, string> = {},
+  headers: Record<string, string> = { 'x-api-key': KEY }
+): OutboundRequest {
+  return {
+    method: 'POST',
+    params: {},
+    query,
+    headers,
+    body,
+    bodyArray: null,
+    rawBody: '',
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
+  process.env.INTERNAL_VALIDATION_KEY = KEY;
+  (runDealAttribution as jest.Mock).mockResolvedValue({
+    success: true,
+    scanned: 3,
+    attributed: 2,
+    updated: 2,
+    stage_synced: 1,
+    next_cursor: 'chat_z',
+  });
   (getAgentActions as jest.Mock).mockResolvedValue([]);
   (resolveHubspotConfig as jest.Mock).mockReturnValue({ access_token: 't' });
   (dealFunnelCounts as jest.Mock).mockResolvedValue({
@@ -45,6 +81,10 @@ beforeEach(() => {
     stages: [],
     total: 0,
   });
+});
+
+afterEach(() => {
+  delete process.env.INTERNAL_VALIDATION_KEY;
 });
 
 describe('dayBoundsMs', () => {
@@ -177,6 +217,103 @@ describe('dealFunnelView', () => {
       expect.anything(),
       'a1',
       expect.objectContaining({ campaignId: null })
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// run-deal-attribution
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runDealAttributionView', () => {
+  it('runs the scan and returns the counters plus the resume cursor', async () => {
+    const res = await runDealAttributionView(
+      scanReq({
+        agent_id: 'a1',
+        campaign_id: 'camp_1',
+        cursor: 'chat_m',
+        limit: 50,
+      })
+    );
+    expect(runDealAttribution).toHaveBeenCalledWith({
+      agentId: 'a1',
+      campaignId: 'camp_1',
+      cursor: 'chat_m',
+      limit: 50,
+      onlyChatId: null,
+      dryRun: false,
+    });
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ success: true, next_cursor: 'chat_z' });
+  });
+
+  it('401s an unauthenticated caller WITHOUT running the scan', async () => {
+    // The one outbound endpoint behind an API key, because it writes attribution across every chat.
+    const res = await runDealAttributionView(scanReq({}, {}, {}));
+    expect(res.status).toBe(401);
+    expect(runDealAttribution).not.toHaveBeenCalled();
+  });
+
+  it('401s when the key is not configured at all, rather than opening up', async () => {
+    delete process.env.INTERNAL_VALIDATION_KEY;
+    const res = await runDealAttributionView(scanReq());
+    expect(res.status).toBe(401);
+    expect(runDealAttribution).not.toHaveBeenCalled();
+  });
+
+  it('reads a parameter from the QUERY when the body does not carry it', async () => {
+    // The FE cron posts a body; a manual re-scan is easier to fire as a URL.
+    await runDealAttributionView(scanReq({}, { only_chat_id: 'chat_7' }));
+    expect(runDealAttribution).toHaveBeenCalledWith(
+      expect.objectContaining({ onlyChatId: 'chat_7' })
+    );
+  });
+
+  it('lets the BODY win over the query', async () => {
+    await runDealAttributionView(
+      scanReq({ agent_id: 'body' }, { agent_id: 'query' })
+    );
+    expect(runDealAttribution).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: 'body' })
+    );
+  });
+
+  it.each([['1'], ['true'], ['TRUE'], ['yes'], [' Yes '], [true]])(
+    'enables dryRun for %p',
+    async (given) => {
+      await runDealAttributionView(scanReq({ dry_run: given }));
+      expect(runDealAttribution).toHaveBeenCalledWith(
+        expect.objectContaining({ dryRun: true })
+      );
+    }
+  );
+
+  it.each([['false'], ['0'], ['no'], [''], [undefined], ['maybe']])(
+    'leaves dryRun off for %p',
+    async (given) => {
+      // Spelled out rather than relying on truthiness: the STRING "false" is truthy in JS, so a
+      // `?dry_run=false` query would otherwise silently turn the scan into a no-op that reported
+      // success — and nobody would notice the attribution had stopped.
+      await runDealAttributionView(scanReq({ dry_run: given }));
+      expect(runDealAttribution).toHaveBeenCalledWith(
+        expect.objectContaining({ dryRun: false })
+      );
+    }
+  );
+
+  it('answers 200 with success:false when the scan throws', async () => {
+    // The caller is a scheduler that retries non-2xx, and the scan has already written attribution to
+    // some chats by the time it faults.
+    (runDealAttribution as jest.Mock).mockRejectedValue(new Error('hs down'));
+    const res = await runDealAttributionView(scanReq());
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({ success: false, error: 'Error: hs down' });
+  });
+
+  it('passes a blank parameter through as null, not an empty string', async () => {
+    await runDealAttributionView(scanReq({ agent_id: '', cursor: '' }));
+    expect(runDealAttribution).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: null, cursor: null })
     );
   });
 });

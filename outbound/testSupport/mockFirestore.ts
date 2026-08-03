@@ -238,6 +238,11 @@ function matches(data: Data, filters: Filter[]): boolean {
   });
 }
 
+/** The last path segment — a document's ID. */
+function docIdOf(path: string): string {
+  return path.split('/').pop()!;
+}
+
 function compare(a: unknown, b: unknown): number {
   const av = a instanceof Date ? a.getTime() : a;
   const bv = b instanceof Date ? b.getTime() : b;
@@ -268,7 +273,8 @@ class MockQuery {
     protected readonly filters: Filter[] = [],
     protected readonly orders: Array<{ field: string; dir: string }> = [],
     protected readonly limitN: number | null = null,
-    protected readonly isGroup = false
+    protected readonly isGroup = false,
+    protected readonly after: string | null = null
   ) {}
 
   where(field: string, op: string, value: unknown): MockQuery {
@@ -277,7 +283,8 @@ class MockQuery {
       [...this.filters, { field, op, value }],
       this.orders,
       this.limitN,
-      this.isGroup
+      this.isGroup,
+      this.after
     );
   }
 
@@ -287,7 +294,8 @@ class MockQuery {
       this.filters,
       [...this.orders, { field, dir }],
       this.limitN,
-      this.isGroup
+      this.isGroup,
+      this.after
     );
   }
 
@@ -297,13 +305,50 @@ class MockQuery {
       this.filters,
       this.orders,
       n,
-      this.isGroup
+      this.isGroup,
+      this.after
     );
   }
 
-  startAfter(): MockQuery {
-    // Cursor paging is not modelled; suites that need it assert on a single page.
-    return this;
+  /**
+   * Cursor paging, modelled for `__name__` ordering only.
+   *
+   * That is the one form the ported code uses — the conversion scan pages id-ordered outbound chats and
+   * hands the last id back as a resume cursor. Modelling it for real matters because the resume is the
+   * whole point of that endpoint: a no-op `startAfter` would make every page return page one, and a test
+   * that walked to exhaustion would loop forever or silently pass on one page.
+   *
+   * Anything else THROWS rather than silently ignoring the cursor — three earlier gaps in this double
+   * were invisible precisely because a missing operation looked like passing code.
+   */
+  startAfter(cursor: unknown): MockQuery {
+    if (!this.orders.some((o) => o.field === '__name__')) {
+      throw new Error(
+        'mockFirestore: startAfter is modelled only for orderBy("__name__")'
+      );
+    }
+    let id: string;
+    if (typeof cursor === 'string') {
+      id = cursor;
+    } else if (
+      cursor &&
+      typeof cursor === 'object' &&
+      '__name__' in (cursor as Record<string, unknown>)
+    ) {
+      id = String((cursor as Record<string, unknown>).__name__);
+    } else {
+      throw new Error(
+        'mockFirestore: startAfter takes an id string or {__name__: id}'
+      );
+    }
+    return new MockQuery(
+      this.collectionPath,
+      this.filters,
+      this.orders,
+      this.limitN,
+      this.isGroup,
+      id
+    );
   }
 
   private candidatePaths(): string[] {
@@ -322,9 +367,27 @@ class MockQuery {
 
     for (const { field, dir } of [...this.orders].reverse()) {
       rows = rows.sort((a, b) => {
-        const c = compare(readField(a.data, field), readField(b.data, field));
+        // `__name__` orders by document ID, which is not a field in the data.
+        const av =
+          field === '__name__' ? docIdOf(a.path) : readField(a.data, field);
+        const bv =
+          field === '__name__' ? docIdOf(b.path) : readField(b.data, field);
+        const c = compare(av, bv);
         return dir === 'desc' ? -c : c;
       });
+    }
+
+    // The cursor is applied AFTER ordering and BEFORE the limit, as Firestore does. Positioned by
+    // VALUE comparison, not by finding the document: a cursor id that no longer exists (the chat was
+    // deleted between pages) must still position the next page correctly rather than returning nothing.
+    if (this.after !== null) {
+      const desc = this.orders.some(
+        (o) => o.field === '__name__' && o.dir === 'desc'
+      );
+      const cursor = this.after;
+      rows = rows.filter((r) =>
+        desc ? docIdOf(r.path) < cursor : docIdOf(r.path) > cursor
+      );
     }
 
     if (this.limitN !== null) rows = rows.slice(0, this.limitN);

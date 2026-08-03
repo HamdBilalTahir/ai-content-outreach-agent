@@ -68,7 +68,7 @@ forced them are the expensive part to rediscover.
 | 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | —         |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **2,031 tests / 49 suites**, `tsc` and `eslint` clean.
+Current: **2,110 tests / 51 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -536,6 +536,36 @@ breaks all three identically.
 
 **Every funnel failure is a reported `error`, never an empty chart**, because an empty funnel and an
 unreachable pipeline look the same to whoever is reading the dashboard.
+
+#### 10d² — the attribution engine and its scan endpoint (~405 lines) — ✅ DONE
+
+`services/deal_attribution.py` as `outbound/services/dealAttribution.ts`, `views/deal_conversion.py` as
+the second half of `analyticsViews.ts`, and `require_api_key` as `outbound/http/apiAuth.ts`. Thirty-one
+routes. This writes the attribution 10d¹'s funnel reads.
+
+**The two write paths are gated differently, and reversing either breaks it.** Activities and the memory
+write-back are CHANGE-gated, tracked in `memory._attributed_deals` as `{dealId: stageId}` — state-gating
+them would re-card the same deal on every hourly run. The funnel-stage sync is STATE-gated and runs on
+every scan, comparing the chat's current stage against the target the deal implies — change-gating it
+would leave an already-attributed chat whose promotion was missed wrong until the deal happened to move
+again. A change-gated sync could never heal; a state-gated card writer would duplicate forever.
+
+**An unwritten activity card is not recorded as logged, but the memory facts still land.** The source
+gates the write-back on `activities > 0 OR changed`, so a first attribution writes its deal id and stage
+even when the card failed — and `_attributed_deals` stays empty, so the next scan re-cards it. Both
+halves are deliberate.
+
+**Only the internal-key path of `api_auth` is ported.** The source's second credential is a per-company
+key resolved through the inbound product's multi-tenant key store; this port has no company registry and
+no outbound endpoint is company-scoped, so that branch would be an unreachable lookup. It fails CLOSED,
+including when the key is unset — the source is explicit that "open when unconfigured" is how several
+webhooks in that codebase ended up with their auth commented out.
+
+**The test double now models cursor paging for real.** `startAfter` was a documented no-op and
+`orderBy('__name__')` sorted on a field that does not exist in the data, so a resume test would have
+looped forever or silently passed on one page. Both are implemented, positioned by VALUE comparison so a
+cursor id deleted between pages still positions correctly — and anything other than `__name__` ordering
+now THROWS, per the double's rule that an unsupported operation must fail loudly.
 
 ## Deferral ledger
 

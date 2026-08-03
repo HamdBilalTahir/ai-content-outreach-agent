@@ -30,6 +30,7 @@ jest.mock('../../http/webhookViews', () => ({
 }));
 jest.mock('../../http/analyticsViews', () => ({
   dealFunnelView: jest.fn(async () => ({ status: 200, json: {} })),
+  runDealAttributionView: jest.fn(async () => ({ status: 200, json: {} })),
 }));
 jest.mock('../../http/voiceViews', () => ({
   voiceConnectView: jest.fn(async () => ({ status: 200, json: {} })),
@@ -112,6 +113,7 @@ describe('the route table', () => {
       // Declared after every campaign sub-action, as the source declares it.
       'campaigns/:campaign_id/',
       'analytics/deal-funnel/',
+      'analytics/run-deal-attribution/',
       'dnc/area-codes/',
     ]);
   });
@@ -147,6 +149,7 @@ describe('the route table', () => {
       'outbound_chat_resume',
       'outbound_campaign_detail',
       'outbound_deal_funnel',
+      'outbound_run_deal_attribution',
       'outbound_dnc_area_codes',
     ]);
   });
@@ -185,7 +188,6 @@ describe('matchRoute', () => {
 
   it('returns null for a route whose view has not landed yet', () => {
     // Absent from the table on purpose — see the note in routes.ts on why nothing is stubbed.
-    expect(matchRoute('analytics/run-deal-attribution/')).toBeNull();
     expect(matchRoute('analytics/deal-timeline/')).toBeNull();
   });
 
