@@ -485,3 +485,35 @@ export async function getAgentPrompt(
     return null;
   }
 }
+
+/**
+ * Persist refreshed OAuth credentials onto an agent's action.
+ *
+ * Written after every token refresh so the next call reuses the new access token instead of spending
+ * another refresh round-trip — and so the rotated refresh token survives, since providers may issue a
+ * new one and invalidate the old.
+ */
+export async function updateAgentActionAuth(
+  agentId: string,
+  actionId: string,
+  authData: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    if (!agentId || !actionId) {
+      console.log(
+        `Missing required fields - agent_id: ${agentId}, action_id: ${actionId}`
+      );
+      return false;
+    }
+    await db
+      .collection('agents')
+      .doc(agentId)
+      .collection('actions')
+      .doc(actionId)
+      .set({ auth: authData }, { merge: true });
+    return true;
+  } catch (e) {
+    console.log(`Error updating agent action auth: ${e}`);
+    return false;
+  }
+}

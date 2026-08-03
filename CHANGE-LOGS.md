@@ -6,6 +6,25 @@
 
 ---
 
+> ### Outbound agent port — Phase 9a: the HubSpot client core
+>
+> - **What changed:** Ported the first layer of `services/hubspot.py` (2,235 lines, ~90 functions) as `outbound/services/hubspot.ts` — config resolution, authentication, contact matching and writes, notes, and object deletion. Phase 9 is split five ways along its natural layers: **9a** client core + contacts, **9b** stage sync + deals, **9c** meetings and slots, **9d** audiences and search, **9e** analytics, discovery, and the tools/views. Closes the `preservePriorEmailOnContact` seam that Phase 7b²b² left open.
+> - **Everything in this layer is best-effort by design, and that is not laziness.** Every function returns a falsy result rather than throwing, because each is called from inside a `try` block whose entire purpose is *"the outcome already happened — record it if you can"*. The outbound flow's own state lives in Firestore; a HubSpot outage must never stop outreach. Asserted throughout, including that a note failure never throws into a sync.
+> - **Only the v2 action counts, and it is keyed on `provider` for a specific reason.** `resolveHubspotConfig` matches `provider == "hubspot_v2"` and ignores the legacy `provider == "hubspot"` action entirely — the one behind `create_hubspot_lead` / `update_hubspot_lead`. It reads `provider` rather than `type` because `getAgentActions` blanks `type` and `functions` for actions with no `action_id`, so `provider` is the robust identifier and `type` is only a secondary check. Both paths tested, along with the legacy action being ignored.
+> - **Two authentication modes with different operational shapes.** A `refresh_token` means OAuth: refresh on every call, and persist the result — including the **rotated** refresh token, defaulting to the one we sent, since HubSpot may issue a new one and invalidate the old. An `access_token` alone is a Private App token: non-expiring, no OAuth flow, no client credentials, used directly with no round-trip. Neither means "not connected", which is exactly what makes the whole CRM layer a silent no-op for an unconfigured agent.
+> - **Test records get their own owner AND meeting link, and the two must stay in step.** Both resolvers branch on `record_type == "Test"` so that the CRM record owner is the owner of the calendar being booked — otherwise an E2E contact is assigned to one rep while the meeting lands on another's calendar. Tested as a pair, including the fallback when no test values are configured.
+> - **Contact matching is ordered by trustworthiness, and one guard prevents merging strangers.** Email (exact) → phone → first AND last name. The phone search checks both `phone` and `mobilephone` via two filter *groups* (HubSpot ORs groups, ANDs filters within one) on the last-10 NANP digits, because a real CRM stores the same number in half a dozen formats — and anything that does not normalize to 10 digits is not searched at all. The name match requires **both** parts: matching on a first name alone would merge different people.
+> - **An email change ADDS; it never replaces.** `addContactSecondaryEmail` appends to `hs_additional_emails` while preserving the primary and every existing secondary, mirroring the chat's append-only `_email_history`. The old address is how prior threads, bounces, and suppression entries stay attributable. An address already on the contact returns `true` — the goal is met, and reporting failure would make an idempotent call look broken.
+> - **Two small recoveries worth keeping:** a **409** on contact creation is recovered by looking the id up by email rather than failed, so a race between two turns cannot lose the contact; and a **404** on delete counts as success, because already-gone meets the goal. Empty property values are dropped everywhere, since HubSpot reads an empty string as "clear this property".
+> - **Notes exist for something a PATCH cannot do:** a plain property PATCH does not update HubSpot's *last activity* date, but a Note engagement does — so every push writes one, which keeps the CRM timeline honest and leaves an audit trail.
+> - **Files:**
+>   - `outbound/services/hubspot.ts`
+>   - `outbound/firebase/agent.ts` (adds `updateAgentActionAuth`, so rotated OAuth credentials survive)
+>   - `outbound/__tests__/services/hubspot.test.ts`
+> - **Verification:** 1,537 tests across 35 suites (55 new), `tsc --noEmit` clean, `eslint outbound/` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 6b²b: the inbound email-reply webhook
 >
 > - **What changed:** Ported `views/email_webhook.py` as `outbound/services/emailWebhook.ts` — how a prospect's email reply actually reaches the agent. Handler only; the HTTP route is Phase 10. **Phase 6b² is complete**, and with it the email side of the port.
