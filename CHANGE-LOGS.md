@@ -6,6 +6,25 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U0: the substrate
+>
+> - **What changed:** Started a second port — the six `Outbound` routes from `ui-admin-panel/app/admin/outbound/`, on top of the backend ported in `PORT-PLAN.md`. This phase lands only what every page needs: 17 dependencies, the 12 shadcn/ui primitives the outbound pages actually import, `cn`/`isArchivedChat`, and the Tailwind 3 → 4 token migration. Plan of record is `UI-PORT-PLAN.md`.
+> - **Twelve primitives, not thirty-nine.** The source ships 39 shadcn components; the outbound pages import twelve — `alert-dialog`, `badge`, `button`, `calendar`, `input`, `label`, `popover`, `sheet`, `skeleton`, `table`, `tabs`, `textarea`. Same rule as the backend port: build what is used.
+> - **The Tailwind 3 → 4 token migration is the whole risk of this phase, and it fails SILENTLY.** The source declares the shadcn colour system in `tailwind.config.ts` under `theme.extend.colors`, mapping `bg-background`, `text-muted-foreground`, `border-border` and ~25 more onto `hsl(var(--token))` pairs. Tailwind 4 has no JS config, so those move into `@theme` in `globals.css`. Get it wrong and `tsc` passes, the build passes, and every page renders unstyled because `bg-card` resolves to nothing — so the token list is exhaustive rather than as-needed, and this phase is verified with a real `next build` rather than a typecheck.
+> - **`--background` and `--foreground` were already taken, so the pre-existing pair was renamed rather than overwritten.** This repo's `body` rule used those two names as HEX values flipped by `prefers-color-scheme`, and `bg-background` compiles to the first of them. They are now `--app-background`/`--app-foreground`, so the eight pre-existing admin pages keep exactly the look they had — nothing outside the ported components reads the shadcn scale, so the two coexist instead of one silently restyling the other.
+> - **`dark:` has to be told what dark means.** Tailwind 4 defaults it to the media query; the source toggles a `.dark` class, and its components are full of `dark:` utilities that would otherwise fire off the viewer's OS preference instead of the shell's own state. Declared with `@custom-variant`. Note the source's `.dark` block overrides only the **sidebar** tokens — the core scale stays light in both modes, which is exactly why its shell reads dark against light content rather than the whole app inverting.
+> - **`calendar.tsx` is the one primitive that could not be copied verbatim.** The source pins `react-day-picker` v8, whose peer range stops at React 18; this repo is on React 19, so installing v8 would mean a version that does not support the runtime it renders into. v9 renamed every `classNames` part and collapsed `IconLeft`/`IconRight` into one `Chevron`. The keys are translated, the Tailwind classes — the actual look — carried across unchanged, and the full v8 → v10 rename table sits on the component so the next reader can diff it against a v8 shadcn calendar elsewhere. It is needed immediately: DNC Area Codes uses it for SAN expiry and the Funnel for its date range.
+> - **Nothing is stubbed, applied to navigation.** A sidebar entry appears only when its route exists — the same rule the backend route table follows, because a nav link to a 404 is the UI equivalent of a stubbed function. So no `Outbound` group yet; each page phase adds its own entry.
+> - **Five endpoints the UI calls have no backend equivalent** — `campaigns/[id]/chats`, `park-chat`, `trigger-ai`, `opt-out`, `hubspot/contacts-by-ids`. They are admin-panel routes that read Firestore directly rather than proxying Django, so Parked Test Chats and the Funnel's chat drawer need them built, not repointed. Recorded against the phases that need them. (`initiate` differs rather than missing: the port mounts that handler at `webhook/initiate-outbound/`, the Django path it preserved.)
+> - **`next-auth` is not ported.** The source's pages import it for the session; this repo has its own auth, and each page gets repointed at `getAuthenticatedUserId` as it lands rather than pulling in a second auth library.
+> - **Files:**
+>   - `UI-PORT-PLAN.md` (new plan of record)
+>   - `src/components/ui/*.tsx` (12 primitives), `src/lib/utils.ts`
+>   - `src/app/globals.css` (token migration), `package.json`
+> - **Verification:** `tsc --noEmit` clean, `eslint` clean over the new files (the repo's 14 pre-existing errors in its own admin pages are untouched), `next build` succeeds, and the backend's 2,291 tests across 56 suites still pass.
+>
+> ---
+>
 > ### Outbound agent port — Phase 10e²: the website-verification backfill — **the port is complete**
 >
 > - **What changed:** Ported `backfill_website_verified_business` as `outbound/commands/websiteVerifiedBusiness.ts`. **This was the last file.** Every phase of the outbound port is done: 2,291 tests across 56 suites, thirty-two routes, and a deferral ledger with nothing real left in it.
