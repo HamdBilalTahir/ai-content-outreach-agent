@@ -31,6 +31,7 @@ jest.mock('../../http/webhookViews', () => ({
 jest.mock('../../http/analyticsViews', () => ({
   dealFunnelView: jest.fn(async () => ({ status: 200, json: {} })),
   runDealAttributionView: jest.fn(async () => ({ status: 200, json: {} })),
+  dealTimelineView: jest.fn(async () => ({ status: 200, json: {} })),
 }));
 jest.mock('../../http/voiceViews', () => ({
   voiceConnectView: jest.fn(async () => ({ status: 200, json: {} })),
@@ -114,6 +115,7 @@ describe('the route table', () => {
       'campaigns/:campaign_id/',
       'analytics/deal-funnel/',
       'analytics/run-deal-attribution/',
+      'analytics/deal-timeline/',
       'dnc/area-codes/',
     ]);
   });
@@ -150,6 +152,7 @@ describe('the route table', () => {
       'outbound_campaign_detail',
       'outbound_deal_funnel',
       'outbound_run_deal_attribution',
+      'outbound_deal_timeline',
       'outbound_dnc_area_codes',
     ]);
   });
@@ -186,9 +189,11 @@ describe('matchRoute', () => {
     expect(matchRoute('task-cron-job/extra')).toBeNull();
   });
 
-  it('returns null for a route whose view has not landed yet', () => {
-    // Absent from the table on purpose — see the note in routes.ts on why nothing is stubbed.
-    expect(matchRoute('analytics/deal-timeline/')).toBeNull();
+  it('serves EVERY route the source declares — the table is complete', () => {
+    // Phase 10d³ closed the last gap. This assertion is the one that would catch a route silently
+    // dropped from the table by a future edit; the per-path list above catches a renamed one.
+    expect(routes).toHaveLength(32);
+    expect(matchRoute('nope/')).toBeNull();
   });
 
   it('gives the DNC registry all three of its methods', () => {

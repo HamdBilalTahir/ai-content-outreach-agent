@@ -6,6 +6,27 @@
 
 ---
 
+> ### Outbound agent port — Phase 10d³: the deal timeline, and the route table is complete
+>
+> - **What changed:** Ported `services/deal_timeline.py` as `outbound/services/dealTimeline.ts`, `views/deal_timeline.py` into `analyticsViews.ts`, and `fetchDealDetail`/`getDealEngagements` into `dealAnalytics.ts` — the two per-deal reads whose only consumer is the timeline. **Thirty-two routes: every route `urls.py` declares is now live.** This is the increment that only exists because the source moved mid-port (recorded as plan revision 9), and it follows the attribution linkage 10d² writes — which is why the three sub-increments had to land in this order.
+> - **De-duplication with HubSpot preferred, and the loser DONATING its fields.** The AI and HubSpot both see the same email and the same acquisition, so without this every touchpoint count **doubles** on exactly the deals the view exists to explain. But a naive "keep HubSpot" would throw away the richer record's detail, so whichever event survives absorbs any `title`, `status`, or `meta` keys the other had. Asserted in both directions, including the winner keeping its own value when both have one.
+> - **The de-dup buckets are deliberately fuzzy.** Two-minute windows for email, a day for meetings — the two systems stamp the same touch seconds apart, and an exact-match key would collapse nothing at all. Direction is part of the email key, because a reply is not the same touch as the send. Calls, notes, and `deal_created` are never de-duped: two calls two minutes apart are two calls.
+> - **Stage changes are never fabricated.** HubSpot's `hs_date_entered_<id>` history is sparse on older or manually-staged deals — often empty — so only stages with a real timestamp emit an event. The timeline shows what HubSpot actually recorded rather than a plausible reconstruction at `createdate`. The **acquisition is the deliberate exception**: it falls back to `closedate`, which HubSpot stamps reliably on close, so a won deal always shows the one event the whole view is for. A deal that passed _through_ a won stage and moved on still reports its acquisition.
+> - **An AI `acquired` on an OPEN deal is dropped.** `prospect_converted_to_deal` is written for any attributed deal, won or not — on an open one it is an attribution marker, and keeping it would report an open deal as **won**, which is the one thing a conversion dashboard must never do.
+> - **Internal messages are not touchpoints.** `direction: 'internal'` is skipped, so admin notes and `@ai` instructions do not inflate `touchpoint_count` with the team talking to itself. A message counts as inbound on _either_ the direction field or a customer sender, because the two are set by different writers.
+> - **Two failure shapes, and the FE relies on the difference.** `{success: false, error}` for a bad request or an unusable HubSpot config — the caller's problem — and `{success: true, reason}` with an empty event list for a deal that legitimately has nothing to show. A deal with **no source chat is not an error**: a rep can create a deal from scratch, and that deal simply has no chat we know of.
+> - **The deal's own pipeline wins over the configured one.** A rep can move a deal into a pipeline the agent is not configured for, and its own stage labels are the ones the timeline should show; the configured pipeline is the fallback.
+> - **An undated touchpoint is dropped, not placed at epoch zero** — which would sort it before the deal existed and read as the first touch. Meeting events use the START time rather than the time they were logged, because a meeting matters when it happens.
+> - **`syc` is kept in the source ranking** even though nothing in this port produces it, so an event from that source would rank where the source says rather than silently losing to both HubSpot _and_ AI.
+> - **The routes suite now asserts the table is COMPLETE** (32 routes), which is the assertion that would catch a route silently dropped by a future edit — the per-path list catches a renamed one.
+> - **Files:**
+>   - `outbound/services/dealTimeline.ts`, `outbound/services/dealAnalytics.ts` (adds the two per-deal reads)
+>   - `outbound/http/analyticsViews.ts` (adds the timeline view), `outbound/http/routes.ts` (one route)
+>   - `outbound/__tests__/services/dealTimeline.test.ts`, `outbound/__tests__/http/analyticsViews.test.ts`, `outbound/__tests__/http/routes.test.ts`
+> - **Verification:** 2,173 tests across 52 suites (63 new), `tsc --noEmit` clean, `eslint` clean.
+>
+> ---
+>
 > ### Outbound agent port — Phase 10d²: the attribution engine and its scan endpoint
 >
 > - **What changed:** Ported `services/deal_attribution.py` as `outbound/services/dealAttribution.ts`, `views/deal_conversion.py` into `analyticsViews.ts`, and `require_api_key` as `outbound/http/apiAuth.ts`. Thirty-one routes. This is the scan that _writes_ the attribution 10d¹'s funnel reads.

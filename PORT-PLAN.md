@@ -66,9 +66,10 @@ forced them are the expensive part to rediscover.
 | 10d¹  | Deal-analytics read layer + the funnel view       | ~425         | `b06a316` |
 | 10d²  | The attribution engine + its scan endpoint        | ~405         | `8808adc` |
 | 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | —         |
+|       | — **every route in `urls.py` is now live (32)**   |              |           |
 | 10e   | `management/commands/` backfills                  | ~750         | —         |
 
-Current: **2,110 tests / 51 suites**, `tsc` and `eslint` clean.
+Current: **2,173 tests / 52 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -566,6 +567,38 @@ webhooks in that codebase ended up with their auth commented out.
 looped forever or silently passed on one page. Both are implemented, positioned by VALUE comparison so a
 cursor id deleted between pages still positions correctly — and anything other than `__name__` ordering
 now THROWS, per the double's rule that an unsupported operation must fail loudly.
+
+#### 10d³ — the deal timeline (~440 lines) — ✅ DONE
+
+`services/deal_timeline.py` as `outbound/services/dealTimeline.ts`, `views/deal_timeline.py` into
+`analyticsViews.ts`, plus `fetchDealDetail` and `getDealEngagements` into `dealAnalytics.ts` — the two
+per-deal reads whose only consumer is the timeline. **Thirty-two routes: every route the source declares
+is now live.**
+
+The increment that only exists because the source moved. It merges HubSpot's view of a deal with ours
+into one date-ascending event list, and follows the attribution linkage 10d² writes — which is why the
+three sub-increments had to land in this order.
+
+**De-duplication with HubSpot preferred, and the loser DONATING its fields.** The two systems both see
+the same email and the same acquisition, so without this every touchpoint count doubles on exactly the
+deals the view exists to explain. The buckets are deliberately fuzzy — two-minute windows for email, a
+day for meetings — because the two stamp the same touch seconds apart and an exact-match key would
+collapse nothing. Calls and notes are never de-duped: two calls two minutes apart are two calls.
+
+**Stage changes are never fabricated.** `hs_date_entered_<id>` is sparse on older or manually-staged
+deals, and only stages with a real timestamp emit an event — so the timeline shows what HubSpot recorded
+rather than a plausible reconstruction. The acquisition is the deliberate exception, falling back to
+`closedate` (which HubSpot stamps reliably on close) so a won deal always shows the event the whole view
+is for.
+
+**An AI `acquired` on an OPEN deal is dropped.** `prospect_converted_to_deal` is written for any
+attributed deal; on an open one it is an attribution marker, and keeping it would report an open deal as
+won — the one thing a conversion dashboard must never do.
+
+**Two failure shapes, and the FE relies on the difference:** `{success: false, error}` for a bad request
+or an unusable config (the caller's problem), and `{success: true, reason}` with an empty list for a deal
+that legitimately has nothing to show. A deal with no source chat is not an error — a rep can create one
+from scratch.
 
 ## Deferral ledger
 

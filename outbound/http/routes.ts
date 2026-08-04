@@ -48,7 +48,11 @@ import {
   hubspotListsView,
   hubspotSearchContactsView,
 } from './hubspotViews';
-import { dealFunnelView, runDealAttributionView } from './analyticsViews';
+import {
+  dealFunnelView,
+  dealTimelineView,
+  runDealAttributionView,
+} from './analyticsViews';
 import {
   dncAreaCodeDeleteView,
   dncAreaCodesListView,
@@ -262,6 +266,12 @@ export const routes: Route[] = [
     name: 'outbound_run_deal_attribution',
     path: 'analytics/run-deal-attribution/',
     methods: { POST: runDealAttributionView },
+  },
+  // Attribution Timeline — one deal's full first-touch → acquisition list (HubSpot + AI merged).
+  {
+    name: 'outbound_deal_timeline',
+    path: 'analytics/deal-timeline/',
+    methods: { GET: dealTimelineView },
   },
   // FE admin: the FTC DNC area-code registry (which area codes our SAN can scrub) — GET/POST/DELETE.
   {

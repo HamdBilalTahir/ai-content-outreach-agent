@@ -20,13 +20,18 @@ jest.mock('../../services/dealAnalytics', () => ({
 jest.mock('../../services/dealAttribution', () => ({
   runDealAttribution: jest.fn(),
 }));
+jest.mock('../../services/dealTimeline', () => ({
+  buildDealTimeline: jest.fn(),
+}));
 
 import {
   dayBoundsMs,
   dealFunnelView,
+  dealTimelineView,
   runDealAttributionView,
 } from '../../http/analyticsViews';
 import { runDealAttribution } from '../../services/dealAttribution';
+import { buildDealTimeline } from '../../services/dealTimeline';
 import { getAgentActions } from '../../firebase/agent';
 import { resolveHubspotConfig } from '../../services/hubspot';
 import { dealFunnelCounts } from '../../services/dealAnalytics';
@@ -66,6 +71,11 @@ function scanReq(
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.INTERNAL_VALIDATION_KEY = KEY;
+  (buildDealTimeline as jest.Mock).mockResolvedValue({
+    success: true,
+    events: [],
+    touchpoint_count: 0,
+  });
   (runDealAttribution as jest.Mock).mockResolvedValue({
     success: true,
     scanned: 3,
@@ -315,5 +325,81 @@ describe('runDealAttributionView', () => {
     expect(runDealAttribution).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: null, cursor: null })
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deal-timeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('dealTimelineView', () => {
+  /** A GET to the timeline endpoint, authorised unless told otherwise. */
+  function tlReq(
+    query: Record<string, string> = {},
+    headers: Record<string, string> = { 'x-api-key': KEY }
+  ): OutboundRequest {
+    return {
+      method: 'GET',
+      params: {},
+      query,
+      headers,
+      body: {},
+      bodyArray: null,
+      rawBody: '',
+    };
+  }
+
+  it('builds the timeline from the query params', async () => {
+    const res = await dealTimelineView(
+      tlReq({ agent_id: 'a1', deal_id: 'd1', record_type: 'all' })
+    );
+    expect(buildDealTimeline).toHaveBeenCalledWith({
+      agentId: 'a1',
+      dealId: 'd1',
+      chatId: null,
+      recordType: 'all',
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('defaults record_type to Real, so a Test deal is not surfaced by accident', async () => {
+    await dealTimelineView(tlReq({ agent_id: 'a1', deal_id: 'd1' }));
+    expect(buildDealTimeline).toHaveBeenCalledWith(
+      expect.objectContaining({ recordType: 'Real' })
+    );
+  });
+
+  it('401s an unauthenticated caller WITHOUT making any HubSpot call', async () => {
+    // Behind the key because it makes several HubSpot requests per call — an open endpoint could burn the
+    // portal's rate limit.
+    const res = await dealTimelineView(tlReq({ agent_id: 'a1' }, {}));
+    expect(res.status).toBe(401);
+    expect(buildDealTimeline).not.toHaveBeenCalled();
+  });
+
+  it('passes a blank param through as null', async () => {
+    await dealTimelineView(tlReq({ agent_id: 'a1', deal_id: '', chat_id: '' }));
+    expect(buildDealTimeline).toHaveBeenCalledWith(
+      expect.objectContaining({ dealId: null, chatId: null })
+    );
+  });
+
+  it('surfaces a validation failure as a 200 the FE can read', async () => {
+    (buildDealTimeline as jest.Mock).mockResolvedValue({
+      success: false,
+      error: 'agent_id is required',
+    });
+    const res = await dealTimelineView(tlReq());
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({ success: false, error: 'agent_id is required' });
+  });
+
+  it('answers 200 with success:false when the build throws', async () => {
+    (buildDealTimeline as jest.Mock).mockRejectedValue(new Error('hs down'));
+    const res = await dealTimelineView(
+      tlReq({ agent_id: 'a1', deal_id: 'd1' })
+    );
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({ success: false, error: 'Error: hs down' });
   });
 });

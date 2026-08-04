@@ -41,7 +41,7 @@ import type { HubspotConfig } from './hubspot';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /** The properties every deal read needs. */
-const DEAL_SCAN_PROPERTIES = [
+export const DEAL_SCAN_PROPERTIES = [
   'dealstage',
   'pipeline',
   'amount',
@@ -307,6 +307,108 @@ export async function fetchContactDeals(
       stage_entered_at: entered || p.createdate,
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-deal reads (the timeline)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** CRM object type → the properties the timeline needs from that engagement. */
+const ENGAGEMENT_PROPERTIES: Record<string, string[]> = {
+  emails: [
+    'hs_timestamp',
+    'hs_email_direction',
+    'hs_email_subject',
+    'hs_email_status',
+  ],
+  calls: [
+    'hs_timestamp',
+    'hs_call_title',
+    'hs_call_direction',
+    'hs_call_duration',
+  ],
+  meetings: ['hs_timestamp', 'hs_meeting_title', 'hs_meeting_start_time'],
+  notes: ['hs_timestamp', 'hs_note_body'],
+  tasks: ['hs_timestamp', 'hs_task_subject', 'hs_task_status'],
+};
+
+export type EngagementGroups = Record<string, Array<Record<string, unknown>>>;
+
+export interface DealDetail {
+  deal_id: string;
+  dealstage: string | null;
+  pipeline: unknown;
+  amount: unknown;
+  createdate: unknown;
+  closedate: unknown;
+  stage_entered_at: unknown;
+  /** `hs_date_entered_<id>` for every pipeline stage the deal actually passed through. */
+  stage_entered: Record<string, unknown>;
+}
+
+/**
+ * One deal's properties plus its per-stage entry timestamps.
+ *
+ * `stage_entered` only carries stages with a REAL timestamp — the sparse entries are what let the
+ * timeline avoid fabricating stage changes for deals HubSpot never recorded a history for.
+ */
+export async function fetchDealDetail(
+  token: string,
+  dealId: string,
+  stageIds?: readonly string[] | null
+): Promise<DealDetail | null> {
+  if (!dealId) return null;
+  const props = [
+    ...DEAL_SCAN_PROPERTIES,
+    'closedate',
+    ...(stageIds ?? []).filter(Boolean).map((s) => `hs_date_entered_${s}`),
+  ];
+  const read = await readDealsBatch(token, [dealId], props);
+  const p = read[String(dealId)];
+  if (p === undefined) return null;
+
+  const stage = (p.dealstage as string) ?? null;
+  const entered: Record<string, unknown> = {};
+  for (const s of stageIds ?? []) {
+    const v = p[`hs_date_entered_${s}`];
+    if (s && v) entered[s] = v;
+  }
+  return {
+    deal_id: String(dealId),
+    dealstage: stage,
+    pipeline: p.pipeline,
+    amount: p.amount,
+    createdate: p.createdate,
+    closedate: p.closedate,
+    stage_entered_at:
+      (stage ? p[`hs_date_entered_${stage}`] : null) || p.createdate,
+    stage_entered: entered,
+  };
+}
+
+/**
+ * Every engagement associated to a deal, grouped by type.
+ *
+ * Best-effort per group: a failing association or read degrades that group to `[]` rather than losing the
+ * whole timeline. All five keys are always present, so the caller never has to check.
+ */
+export async function getDealEngagements(
+  token: string,
+  dealId: string
+): Promise<EngagementGroups> {
+  const out: EngagementGroups = {};
+  for (const key of Object.keys(ENGAGEMENT_PROPERTIES)) out[key] = [];
+  if (!dealId) return out;
+
+  for (const [objectType, props] of Object.entries(ENGAGEMENT_PROPERTIES)) {
+    const ids = await assocObjectIds(token, 'deals', dealId, objectType);
+    if (ids.length === 0) continue;
+    const read = await readObjectsBatch(token, objectType, ids, props);
+    for (const [oid, p] of Object.entries(read)) {
+      out[objectType].push({ ...p, id: oid });
+    }
+  }
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

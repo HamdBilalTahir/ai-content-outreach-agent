@@ -1,7 +1,7 @@
 /**
- * The analytics dashboard endpoints — the deal funnel and the attribution scan.
+ * The analytics dashboard endpoints — the deal funnel, the attribution scan, and the deal timeline.
  *
- * Ports `views/deal_funnel.py` and `views/deal_conversion.py`. The FE prepends its own Firestore New/Contacted/Engaged counts and
+ * Ports `views/deal_funnel.py`, `views/deal_conversion.py`, and `views/deal_timeline.py`. The FE prepends its own Firestore New/Contacted/Engaged counts and
  * clumps the intermediate open stages into one column with a per-stage drill-down, so what this returns
  * is the HubSpot half only.
  *
@@ -20,6 +20,7 @@ import { getAgentActions } from '../firebase/agent';
 import { resolveHubspotConfig } from '../services/hubspot';
 import { dealFunnelCounts } from '../services/dealAnalytics';
 import { runDealAttribution } from '../services/dealAttribution';
+import { buildDealTimeline } from '../services/dealTimeline';
 import { requireApiKey } from './apiAuth';
 import { json } from './types';
 import type { OutboundRequest, OutboundResponse } from './types';
@@ -146,6 +147,43 @@ export async function runDealAttributionView(
     );
   } catch (e) {
     console.error(`[DEAL_ATTR] run failed: ${e}`);
+    return json({ success: false, error: String(e) });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /analytics/deal-timeline/
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One deal's full first-touch → acquisition history.
+ *
+ * Behind the API key like the scan, and for a related reason: it makes several HubSpot calls per request,
+ * so an unauthenticated caller could burn the portal's rate limit. `deal_id` is preferred over `chat_id`
+ * — a chat carries at most one attributed deal, but a deal id names exactly what was asked for.
+ *
+ * A build failure answers 200 with `success: false`, matching the source. This one is a pure read, so the
+ * reason is simply that the FE branches on `success` and a non-2xx would surface as a network error
+ * instead of the message.
+ */
+export async function dealTimelineView(
+  request: OutboundRequest
+): Promise<OutboundResponse> {
+  const deny = requireApiKey(request);
+  if (deny) return deny;
+
+  const q = request.query;
+  try {
+    return json(
+      await buildDealTimeline({
+        agentId: q.agent_id || null,
+        dealId: q.deal_id || null,
+        chatId: q.chat_id || null,
+        recordType: q.record_type || 'Real',
+      })
+    );
+  } catch (e) {
+    console.error(`[DEAL_TL] build failed: ${e}`);
     return json({ success: false, error: String(e) });
   }
 }
