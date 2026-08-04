@@ -88,18 +88,18 @@ name.
 
 ## Phases
 
-| Phase | Scope                                             | Lines  | Commit |
-| ----- | ------------------------------------------------- | ------ | ------ |
-| U0    | Substrate: deps, 12 primitives, Tailwind-4 tokens | ~950   | —      |
-|       | _verified with a real `next build`, not just tsc_ |        |        |
-| U1    | DNC Area Codes                                    | ~506   | —      |
-| U2a   | Campaigns list + detail                           | ~1,160 | —      |
-| U2b   | The audience builder (7 components)               | ~2,240 | —      |
-| U3    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —      |
-| U4    | Attribution Timeline                              | ~1,030 | —      |
-| U5    | The chat-detail suite                             | ~1,657 | —      |
-| U6    | E2E Test + its four routes                        | ~3,900 | —      |
-| U7    | Parked Test Chats                                 | ~100   | —      |
+| Phase | Scope                                             | Lines  | Commit    |
+| ----- | ------------------------------------------------- | ------ | --------- |
+| U0    | Substrate: deps, 12 primitives, Tailwind-4 tokens | ~950   | `65f7b26` |
+|       | _verified with a real `next build`, not just tsc_ |        |           |
+| U1    | DNC Area Codes                                    | ~506   | —         |
+| U2a   | Campaigns list + detail                           | ~1,160 | —         |
+| U2b   | The audience builder (7 components)               | ~2,240 | —         |
+| U3    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —         |
+| U4    | Attribution Timeline                              | ~1,030 | —         |
+| U5    | The chat-detail suite                             | ~1,657 | —         |
+| U6    | E2E Test + its four routes                        | ~3,900 | —         |
+| U7    | Parked Test Chats                                 | ~100   | —         |
 
 **U1 first on purpose.** It is the smallest page, it is fully served by the ported backend, and it
 exercises the whole stack — a primitive, a client component, a server page, a sidebar entry, and a live
