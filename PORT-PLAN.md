@@ -67,7 +67,7 @@ forced them are the expensive part to rediscover.
 | 10d²  | The attribution engine + its scan endpoint        | ~405         | `8808adc` |
 | 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | `fb383f1` |
 |       | — **every route in `urls.py` is now live (32)**   |              |           |
-| 10e¹  | Six backfills + the two operational runners       | ~571         | —         |
+| 10e¹  | Six backfills + the two operational runners       | ~571         | `532647f` |
 | 10e²  | `backfill_website_verified_business`              | ~280         | —         |
 
 Current: **2,239 tests / 55 suites**, `tsc` and `eslint` clean.
