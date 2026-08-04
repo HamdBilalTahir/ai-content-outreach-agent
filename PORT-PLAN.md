@@ -72,7 +72,7 @@ deferral ledger holding nothing but two permanently-unreachable functions.
 | 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | `fb383f1` |
 |       | — **every route in `urls.py` is now live (32)**   |              |           |
 | 10e¹  | Six backfills + the two operational runners       | ~571         | `532647f` |
-| 10e²  | `backfill_website_verified_business`              | ~280         | —         |
+| 10e²  | `backfill_website_verified_business`              | ~280         | `4bc47ee` |
 
 Current: **2,291 tests / 56 suites**, `tsc` and `eslint` clean. **The port is complete.**
 
