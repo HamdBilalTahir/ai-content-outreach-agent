@@ -152,6 +152,7 @@ describe('the command registry', () => {
       'backfill_email_suppression',
       'backfill_last_inbound_email_at',
       'backfill_optout_flags',
+      'backfill_website_verified_business',
       'reconcile_stale_calls',
       'run_deal_attribution',
     ]);

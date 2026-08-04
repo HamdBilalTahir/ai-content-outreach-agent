@@ -22,6 +22,7 @@
 import { reconcileStalePendingCalls } from '../services/stalledRecovery';
 import { runDealAttribution } from '../services/dealAttribution';
 import { backfillAaaiAreaCode, backfillDealCampaign } from './hubspotBackfills';
+import { backfillWebsiteVerifiedBusiness } from './websiteVerifiedBusiness';
 import {
   backfillEmailOptoutChatFlags,
   backfillEmailSuppression,
@@ -31,6 +32,7 @@ import {
 
 export * from './hubspotBackfills';
 export * from './optoutBackfills';
+export * from './websiteVerifiedBusiness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // reconcile_stale_calls
@@ -150,6 +152,7 @@ export const commands = {
   backfill_email_optout_chat_flags: backfillEmailOptoutChatFlags,
   backfill_deal_campaign: backfillDealCampaign,
   backfill_aaai_area_code: backfillAaaiAreaCode,
+  backfill_website_verified_business: backfillWebsiteVerifiedBusiness,
 } as const;
 
 export type CommandName = keyof typeof commands;

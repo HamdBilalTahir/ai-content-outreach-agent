@@ -3,9 +3,12 @@
 Porting `ai-sales-backend/outbound_agent` (a 37,241-line Django app; ~25,000 lines production,
 ~12,000 lines tests) to TypeScript under `outbound/`.
 
-This file is the plan of record. It was reconstructed from the source tree and has been **revised seven
-times from reading the source** — every revision is recorded below, because the dependency facts that
-forced them are the expensive part to rediscover.
+This file is the plan of record. It was reconstructed from the source tree and has been **revised nine
+times** — every revision is recorded below, because the dependency facts that forced them are the
+expensive part to rediscover.
+
+**The port is complete.** Thirty-seven increments, 2,291 tests across 56 suites, thirty-two routes, and a
+deferral ledger holding nothing but two permanently-unreachable functions.
 
 ## Ground rules
 
@@ -20,9 +23,10 @@ forced them are the expensive part to rediscover.
 - **Behaviour is preserved over tidiness.** Where the source does something surprising, the port
   pins it with a test and records _why_ on the function. The bar for changing behaviour is not "this
   looks wrong" but "this does not do what it _says_ it does" — see the bug-fix section.
-- **A phase's own tests are suspect too.** Nine increments so far had a failing test whose FIXTURE was
-  invented rather than read from the source or the ported helper. Check which of the two is wrong
-  before touching either.
+- **A phase's own tests are suspect too.** Twelve increments had a failing test whose FIXTURE or
+  EXPECTATION was invented rather than read from the source or the ported helper. Check which of the two
+  is wrong before touching either — and note that the answer was sometimes "neither": in Phase 10e² a
+  wrong fixture is what surfaced a genuine defect the port had introduced.
 - **A mock that does not honour its real contract makes a test that proves nothing.** `generateText`
   MUTATES the caller's message list (`messages.push(cleaned)` is the documented loop contract); a plain
   value mock produced a history the loop never sees in production, and a passing test that asserted
@@ -70,7 +74,7 @@ forced them are the expensive part to rediscover.
 | 10e¹  | Six backfills + the two operational runners       | ~571         | `532647f` |
 | 10e²  | `backfill_website_verified_business`              | ~280         | —         |
 
-Current: **2,239 tests / 55 suites**, `tsc` and `eslint` clean.
+Current: **2,291 tests / 56 suites**, `tsc` and `eslint` clean. **The port is complete.**
 
 ## Plan revisions (and why)
 
@@ -636,6 +640,32 @@ scan. Deliberate: a scheduler wants a bounded slice, an operator wants the job f
 `backfill_website_verified_business` is deferred to 10e² — it carries a Playwright/scraping-provider fetch
 engine that needs its own decision.
 
+#### 10e² — the website-verified-business backfill (~280 lines) — ✅ DONE
+
+`backfill_website_verified_business` as `outbound/commands/websiteVerifiedBusiness.ts`. **The last file.
+Every phase is done.**
+
+**Playwright is not ported; the scraping-provider path is, in full.** The source picks a fetch engine three
+ways — a configured scraping API, else headless Chromium when installed, else plain requests. Playwright is
+a ~300MB browser download plus a process lifecycle (a page counter, a recycle every 25 pages, a teardown,
+because Chromium wedges after 25–50 pages on the author's machine), which is a large operational dependency
+in service of one backfill. The consequence is stated rather than hidden: a JS-rendered or
+Cloudflare-protected site yields `false`, exactly as the source's own `SCRAPER_ENGINE=requests` mode does.
+`fetchPage` is an injectable seam, so a Playwright fetcher can be added later without touching anything
+else.
+
+**A real divergence was caught and closed, and it is the most interesting thing in the increment.** A
+`mailto:a@b.com` in a contact's website field has no `://`, so both the source and a direct translation
+prefix it to `http://mailto:a@b.com`. Python's `urlparse` reads that as host `mailto:a@b.com` — garbage
+that fails to fetch. **WHATWG `URL` reads it as userinfo `mailto:a` plus host `b.com`**, so the port would
+have fetched a real, unrelated domain and could have verified a lead against a phone number on somebody
+else's website. That is a wrong answer rather than a missing one, so `normalizeUrl` refuses any URL that
+parses with a username or password. Pinned by test with the reasoning.
+
+`agentId` is required, where the source defaults to a hardcoded production agent id — same decision as the
+area-code backfill in 10e¹. A literal id in a port is a value that silently rots, and a script that writes
+to a customer's CRM should not have a default target.
+
 ## Deferral ledger
 
 Every function knowingly absent from the port, and where it lands. Nothing else is missing.
@@ -687,6 +717,17 @@ Recorded here and in the relevant module docstring.
   where DRF raises `UnsupportedMediaType` → 415. Providers misdeclare content types routinely, and a
   415 returned to a webhook is retried — retrying a body that will never parse is a loop, not a
   recovery. Every view already handles a field it cannot find.
+- **Playwright is not ported** (Phase 10e²), so the website-verification backfill falls back to a direct
+  fetch unless `SCRAPER_PROVIDER` is configured. A JS-rendered or Cloudflare-protected site therefore
+  yields `false` — identical to the source's own `SCRAPER_ENGINE=requests` mode. The provider path is
+  ported in full, and `fetchPage` is an injectable seam.
+- **`normalizeUrl` refuses a URL that parses with credentials** (Phase 10e²), which the source does not.
+  See the bug-fix section: WHATWG `URL` and Python `urlparse` disagree about `http://mailto:a@b.com`, and
+  the JS reading is the dangerous one.
+- **The Django management-command wrapper is not ported** (Phase 10e). `add_arguments` defaults, clamps,
+  and `--dry-run` semantics live in the function signatures; `BaseCommand`, argv parsing, and the
+  `manage.py` entry are dropped, because Django supplies a runner and this repo has none. `commands` is
+  the registry that replaces `manage.py <name>`.
 - **The CNAM gate is ported but not called** (Phase 4). `phoneScreening.decide` is intact and tested;
   CNAM returned `"unknown"` for very nearly every number, which in `business_only` mode blocked
   almost every DNC-clean lead. Re-enabling is one line.
@@ -704,6 +745,18 @@ use dot-path `FieldValue.delete()`, achieving what the comment intended.
 warming domain send six times the source's hourly rate — the precise failure the reputation layer
 exists to prevent, and invisible until an agent left `per_hour` unset on its SendGrid action.
 `emailsPerRecipientPerDay` was also wrong (3 vs 5), in the harmless direction. Both corrected.
+
+`normalizeUrl` (Phase 10e²) is a defect the port would have INTRODUCED, caught by a test whose fixture was
+itself wrong. A `mailto:a@b.com` in a contact's website field has no `://`, so the source prefixes it to
+`http://mailto:a@b.com`; Python's `urlparse` reads host `mailto:a@b.com` and the fetch simply fails.
+**WHATWG `URL` parses the same string as userinfo `mailto:a` plus host `b.com`** — so the direct translation
+would have fetched a real, unrelated domain, and a phone number listed there would have marked the lead
+website-verified. A wrong answer, not a missing one, and invisible: the property is a boolean and nothing
+records which URL produced it. The port refuses any URL parsing with a username or password.
+
+This is a new shape worth naming: not a Python-vs-JS truthiness difference but a **library-semantics**
+difference, where two standard URL parsers disagree about a malformed input. `int()` vs `parseInt` (Phase
+10a) was the same family and benign; this one was not.
 
 The source's own stated intent was the spec. That is the bar for changing behaviour: not "this looks
 wrong" but "this does not do what it says it does". A default that silently disagrees with the source
