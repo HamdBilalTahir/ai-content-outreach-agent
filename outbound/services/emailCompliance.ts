@@ -85,7 +85,13 @@ interface ChatDisposition {
   note_suffix: string;
 }
 
-const CHAT_EVENT_DISPOSITION: Record<string, ChatDisposition> = {
+/**
+ * The chat-level consequence of each SendGrid event type.
+ *
+ * Exported because the suppression backfill maps a stored suppression CLASS onto one of these — it
+ * reconciles the same three outcomes from the store rather than from a live event.
+ */
+export const CHAT_EVENT_DISPOSITION: Record<string, ChatDisposition> = {
   unsubscribe: {
     opt_out: true,
     activity_event: 'unsubscribe',

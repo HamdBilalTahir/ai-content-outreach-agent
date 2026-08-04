@@ -67,9 +67,10 @@ forced them are the expensive part to rediscover.
 | 10d²  | The attribution engine + its scan endpoint        | ~405         | `8808adc` |
 | 10d³  | The deal timeline (upstream, landed 2026-08-03)   | ~440         | `fb383f1` |
 |       | — **every route in `urls.py` is now live (32)**   |              |           |
-| 10e   | `management/commands/` backfills                  | ~750         | —         |
+| 10e¹  | Six backfills + the two operational runners       | ~571         | —         |
+| 10e²  | `backfill_website_verified_business`              | ~280         | —         |
 
-Current: **2,173 tests / 52 suites**, `tsc` and `eslint` clean.
+Current: **2,239 tests / 55 suites**, `tsc` and `eslint` clean.
 
 ## Plan revisions (and why)
 
@@ -599,6 +600,41 @@ won — the one thing a conversion dashboard must never do.
 or an unusable config (the caller's problem), and `{success: true, reason}` with an empty list for a deal
 that legitimately has nothing to show. A deal with no source chat is not an error — a rep can create one
 from scratch.
+
+#### 10e¹ — the backfills and the operational runners (~571 lines) — ✅ DONE
+
+Eight of the nine `management/commands/`, as `outbound/commands/{optoutBackfills,hubspotBackfills,index}.ts`.
+Re-surveyed the directory first per revision 9's lesson: nine commands, 851 lines, unchanged since 10d³.
+
+**The Django command wrapper is not ported, and the arguments are.** `add_arguments` defaults, clamps, and
+`--dry-run` semantics are the substance and live in the function signatures; `BaseCommand`, argv parsing,
+and the `manage.py` entry are dropped, because Django supplies a runner and this repo has none — taking a
+`tsx` dependency to invent one is outside a port of the application. `commands` in `index.ts` is the
+registry that replaces `manage.py <name>`, keyed on the source's own names so the set stays greppable
+against `ls management/commands/`.
+
+**Every backfill is idempotent and SET-ONLY.** `backfillOptoutFlags` seeds a missing key and raises a
+false to true, and **never clears a top-level opt-out** — the chat doc is the trustworthy record, so if it
+says the customer opted out and memory disagrees, the chat doc wins. Reversing that would let a stale
+memory field silently re-open a closed channel.
+
+**A `dryRun` reports the counters a real run would produce.** The read path is identical and only the write
+is skipped. `backfillEmailOptoutChatFlags` goes further and resolves the chat during a dry run, so its
+count reflects real pending writes rather than every suppression entry — a dry run that overcounted or
+undercounted would be worse than none, because it would be trusted.
+
+**Each HubSpot backfill writes exactly ONE property.** A batch update replaces the properties it is given,
+so including a second field read slightly stale would overwrite a rep's edit. `backfillAaaiAreaCode` pages
+by SEEK on `hs_object_id` rather than by offset, because HubSpot caps `after` at 10,000 results and an
+offset walk truncates a larger audience _while reporting success_; the last id comes back so a killed run
+resumes where it stopped. Its dry run creates nothing — not even the property — and its real output is the
+area-code distribution, which is what tells you whether the phone data is good enough for the filter.
+
+**`run_deal_attribution` pages to EXHAUSTION**, the opposite bound to the HTTP endpoint running the same
+scan. Deliberate: a scheduler wants a bounded slice, an operator wants the job finished.
+
+`backfill_website_verified_business` is deferred to 10e² — it carries a Playwright/scraping-provider fetch
+engine that needs its own decision.
 
 ## Deferral ledger
 
