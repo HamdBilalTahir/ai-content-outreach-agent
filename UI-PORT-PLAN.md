@@ -92,7 +92,7 @@ name.
 | ----- | ------------------------------------------------- | ------ | --------- |
 | U0    | Substrate: deps, 12 primitives, Tailwind-4 tokens | ~950   | `65f7b26` |
 |       | _verified with a real `next build`, not just tsc_ |        |           |
-| U1    | DNC Area Codes                                    | ~506   | —         |
+| U1    | DNC Area Codes                                    | ~506   | `d698629` |
 | U2a   | Campaigns list + detail                           | ~1,160 | —         |
 | U2b   | The audience builder (7 components)               | ~2,240 | —         |
 | U3    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —         |
