@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 // @ts-ignore - Next.js handles CSS imports
 import './globals.css';
 import { AuthProvider } from './AuthProvider';
+import { Toaster } from '../components/ui/sonner';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -30,6 +31,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>{children}</AuthProvider>
+        {/*
+          The toast host, mounted at the root exactly as the source does. Every ported page reports
+          success and failure through `toast()`, and without this they are silent no-ops — the page looks
+          like its buttons do nothing.
+        */}
+        <Toaster position="top-center" />
       </body>
     </html>
   );

@@ -6,6 +6,24 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U1: DNC Area Codes
+>
+> - **What changed:** Ported the DNC Area Codes page (`page.tsx` + a 506-line client) as `src/app/admin/outbound/dnc-area-codes/`, mounted the toast host, and added the sidebar's `Outbound` group with its first entry. The first page, deliberately the smallest — it exercises the whole stack on 506 lines instead of E2E Test's 3,840.
+> - **The API proxy route did NOT need porting, and that generalizes.** The source's `app/api/outbound/dnc/area-codes/route.ts` is a thin `miaProxy*` forward to Django. Here the handler is local, mounted by the backend's Phase 10a catch-all **at the same path** — so the client's existing `fetch('/api/outbound/dnc/area-codes')` reaches the ported view with **no change at all**. That is the dividend of Phase 10a preserving every Django path verbatim: the UI's URLs already match. Same will hold for every page except the five endpoints that have no upstream to forward to.
+> - **Verified end to end against the real backend, not just compiled.** A dev server confirmed the page 307s for an unauthenticated request and that `GET /api/outbound/dnc/area-codes` returns `{"success":true,"area_codes":[],"count":0}` — the ported `dncAreaCodesListView` from Phase 10c², through the route table, against real Firestore.
+> - **The Tailwind token migration is confirmed working, which a green build does not prove.** Inspecting the compiled CSS: `.bg-card { background-color: hsl(var(--card)) }` with `--card: 0 0% 100%` in `:root`, `ring-ring` present as `.focus-visible\:ring-ring:focus-visible`, and `.dark\:text-black:where(.dark, .dark *)` — that last one is the proof the `@custom-variant` took, because it compiled to a **class** selector rather than a media query. This was U0's silent failure mode and it is now closed.
+> - **Auth is guarded PER PAGE here, and copying the source verbatim would have shipped this unauthenticated.** The source's page carries a comment saying route protection is handled by the admin layout; this repo's `admin/layout.tsx` is presentational only, and every existing admin route calls `getAuthenticatedUserId()` itself. For this page that mattered concretely: the DNC registry is a global collection anyone with the URL could have read **and written**. The guard follows this repo's own convention rather than introducing a second one.
+> - **`sonner`'s Toaster had to be mounted or every toast is a silent no-op** — the page would look like its save button does nothing. Ported minus its `useTheme()`, which reads from `next-themes` that this repo neither has nor needs; the `toastOptions` class map that makes toasts use the shadcn surface tokens is unchanged.
+> - **A second v8 → v10 rename surfaced at the call site**: `initialFocus` became `autoFocus`. Caught by `tsc`, which is the reassuring part — the Calendar's API changes fail loudly, unlike the CSS.
+> - **The sidebar grows one entry per landed phase**, in the source sidebar's order. A link appears only once its route exists, because a nav link to a 404 is a stub with a label.
+> - **Files:**
+>   - `src/app/admin/outbound/dnc-area-codes/{page.tsx,components/DncAreaCodesClient.tsx}`
+>   - `src/components/ui/sonner.tsx`, `src/app/layout.tsx` (Toaster mounted)
+>   - `src/app/admin/SidebarNav.tsx` (the `Outbound` group)
+> - **Verification:** `tsc --noEmit` clean, `eslint` clean over the ported files, `next build` succeeds and emits `/admin/outbound/dnc-area-codes`, backend's 2,291 tests still green, and the page + API probed live against Firestore.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U0: the substrate
 >
 > - **What changed:** Started a second port — the six `Outbound` routes from `ui-admin-panel/app/admin/outbound/`, on top of the backend ported in `PORT-PLAN.md`. This phase lands only what every page needs: 17 dependencies, the 12 shadcn/ui primitives the outbound pages actually import, `cn`/`isArchivedChat`, and the Tailwind 3 → 4 token migration. Plan of record is `UI-PORT-PLAN.md`.

@@ -129,6 +129,21 @@ Recorded here as they land.
   per affected file, noted in place.
 - **Only `cn` and `isArchivedChat` came from `lib/utils`** (U0). The source's is 196 lines of assorted
   helpers and the ported UI imports two of them. Same rule as the backend port: build what is used.
+- **Auth is guarded PER PAGE, not by the layout** (U1). The source's pages carry a comment saying route
+  protection is handled by the admin layout; this repo's `admin/layout.tsx` is presentational only and
+  every existing admin route calls `getAuthenticatedUserId()` itself. Copying a page verbatim would
+  therefore have shipped it unauthenticated — for DNC Area Codes, a registry anyone with the URL could
+  read and write. Each ported page gets this repo's own guard rather than a second convention.
+- **The API proxy routes are NOT ported** (U1 onward). Each `app/api/outbound/*/route.ts` in the source is
+  a thin `miaProxy*` forward to Django. Here the handler is local, mounted by the backend's catch-all at
+  the same path — so the client's existing `fetch('/api/outbound/dnc/area-codes')` reaches the ported view
+  with no change at all. The five endpoints in the table above are the exception: they have no upstream to
+  forward to and must be written.
+- **`sonner.tsx` drops its `useTheme()`** (U1). It reads from `next-themes`, which this repo does not have
+  and does not need. The `toastOptions` class map — the part that makes toasts use the shadcn surface
+  tokens — is unchanged.
+- **`initialFocus` → `autoFocus`** (U1) at the Calendar call site, the same v8 → v10 rename as the table on
+  `components/ui/calendar.tsx`.
 
 ## Notes for later
 

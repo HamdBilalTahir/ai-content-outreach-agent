@@ -27,6 +27,15 @@ const NAV_CATEGORIES = [
       { href: '/admin/settings', label: 'Settings & Integrations' },
     ],
   },
+  // Grows one entry per landed UI phase, in the source sidebar's order (Campaigns, Funnel, Attribution
+  // Timeline, E2E Test, Parked Test Chats, DNC Area Codes). A link appears only once its route exists —
+  // the same rule the backend route table follows, since a nav link to a 404 is a stub with a label.
+  {
+    header: 'Outbound',
+    links: [
+      { href: '/admin/outbound/dnc-area-codes', label: 'DNC Area Codes' },
+    ],
+  },
 ];
 
 export function SidebarNav() {
