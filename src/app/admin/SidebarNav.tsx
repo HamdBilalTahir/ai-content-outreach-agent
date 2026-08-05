@@ -34,6 +34,7 @@ const NAV_CATEGORIES = [
     header: 'Outbound',
     links: [
       { href: '/admin/outbound/campaigns', label: 'Campaigns' },
+      { href: '/admin/outbound/funnel', label: 'Funnel' },
       { href: '/admin/outbound/dnc-area-codes', label: 'DNC Area Codes' },
     ],
   },

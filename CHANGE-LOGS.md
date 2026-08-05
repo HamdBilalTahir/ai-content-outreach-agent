@@ -6,6 +6,24 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U4: the Funnel
+>
+> - **What changed:** Ported the funnel dashboard (~2,264 lines: the 1,522-line client, the chats drawer, `MultiSelect`, types and test-data) plus three API routes it needs — `funnel/chat-counts`, `funnel/drill`, `campaign-agents`. Four routes now live under `Outbound`.
+> - **I corrected my own revision 3, and the correction matters.** I had recorded that the Funnel and Timeline "no longer call the Django analytics endpoints". Half wrong: the funnel did not _stop_ calling `analytics/deal-funnel`, it **added** `funnel/chat-counts` alongside it. The dashboard's two halves have different sources — chat-stage columns (New/Contacted/Engaged/Lost) count Firestore chats, deal-stage columns still come from the ported `dealFunnelView`. So **backend phase 10d¹ is used after all**, verified live: `/api/outbound/analytics/deal-funnel` returns its 400-for-missing-`agent_id` straight through the route table.
+> - **The lesson survives even though the conclusion narrowed.** My endpoint survey grepped `fetch('/api/...` and missed _both_ multi-line calls — `campaign-agents` and `analytics/deal-funnel` are wrapped across lines. Endpoint surveys have to catch template literals and wrapped arguments, not just single-line string literals. Two of the three "new" endpoints this phase needed were found by re-reading the client, not by the survey.
+> - **The source moved again between phases, and this time in a useful direction.** `ui-admin-panel` is now at `d58687d` with a **clean tree** — the four files that carried uncommitted changes at U3 are committed. `FunnelChatsDrawer` nearly halved (274 → 147 lines) because its drill logic moved server-side into `funnel/drill/route.ts`. So this snapshot _is_ reproducible from git, unlike U3's.
+> - **Three routes written rather than ported** — the eighth, ninth and tenth missing endpoints. All are Admin-SDK Firestore reads, and all took the same three mechanical substitutions: `auth()` → `getAuthenticatedUserId()`, `adminDb` → this repo's `db`, `@/lib/chat-utils` → `@/lib/utils`. The `adminDb` null guard is dropped because `lib/firebase/admin.ts` throws at import when its env is missing, making the 500 branch unreachable here. Query shapes, filters and arithmetic are the source's, untouched — including `chat-counts`' careful `all − test − converted + testConverted − archived` arithmetic, where the overlap is added back so it is not subtracted twice.
+> - **`campaign-agents` drops its company filter.** The source resolves agent documents and keeps only those whose `company_id` matches, coercing both string and number because the documents disagree about the type. Here that filter would exclude **everything** — every agent would fail a comparison against an id that does not exist. Same decision as `/api/agents/list` in U3.
+> - **`FirebaseFirestore.Query` became an imported `Query`.** The ambient namespace comes from `firebase-admin`'s types, so `tsc` accepts it while eslint's `no-undef` does not. Importing the type satisfies both and beats a directive.
+> - **`outbound_campaigns` is the same collection the ported backend writes** — checked against `outbound/services/campaigns.ts` rather than assumed, so the funnel reads what the campaign engine produces.
+> - **Files:**
+>   - `src/app/admin/outbound/funnel/**` (page, 3 components, types, test-data)
+>   - `src/app/api/outbound/{funnel/chat-counts,funnel/drill,campaign-agents}/route.ts`
+>   - `src/app/admin/SidebarNav.tsx`
+> - **Verification:** `tsc --noEmit` clean, `eslint` clean over the ported files, `next build` exits 0 emitting all four routes, and probed live — three new routes 401 unauthenticated, the funnel page 307s, and the catch-all still serves `dnc`, `campaigns` and `analytics/deal-funnel` unaffected.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U3: Campaigns
 >
 > - **What changed:** Ported the whole campaigns tree (~3,400 lines) — the list, the detail view, the new-campaign sheet, five audience tabs and their three helper modules — plus two API routes it needs (`/api/agents/list`, `/api/outbound/agents`). Three routes now live under `Outbound`.

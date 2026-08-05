@@ -143,6 +143,17 @@ name.
    UI actually calls rather than repointing it back at the Django-shaped ones. The endpoint table above is
    re-surveyed at U4.
 
+   **Corrected at U4 — this was half wrong.** The funnel did not stop calling `analytics/deal-funnel`; it
+   ADDED `funnel/chat-counts` alongside it. The two halves of the dashboard have different sources: the
+   chat-stage columns (New/Contacted/Engaged/Lost) count Firestore chats, while the deal-stage columns
+   still come from the ported `dealFunnelView`. So **backend phase 10d¹ is used after all** — verified live,
+   `/api/outbound/analytics/deal-funnel` returns its 400-for-missing-`agent_id` through the route table.
+   10d³ (the timeline) is still an open question until U5 surveys it.
+
+   The lesson stands even though the conclusion narrowed: a grep for `fetch('/api/...` missed both
+   multi-line calls, and the correction came from re-reading the client rather than the survey. Endpoint
+   surveys need to catch template literals and wrapped arguments, not just single-line string literals.
+
 **U1 first on purpose.** It is the smallest page, it is fully served by the ported backend, and it
 exercises the whole stack — a primitive, a client component, a server page, a sidebar entry, and a live
 call to a Phase 10c² route. If the Tailwind token migration is wrong, U1 is where it shows, on 506 lines
@@ -213,6 +224,15 @@ Recorded here as they land.
 - **Three `react-hooks/exhaustive-deps` directives became plain comments** (U3). They document deliberate
   dependency omissions, but this repo's eslint has no react-hooks plugin, so the directives errored as
   unknown rules. The intent is preserved in prose so it survives if the plugin is ever added.
+- **`/api/outbound/{funnel/chat-counts,funnel/drill,campaign-agents}` are written, not ported** (U4) —
+  the eighth, ninth and tenth missing endpoints. All three are Admin-SDK Firestore reads with three
+  mechanical substitutions: `auth()` → `getAuthenticatedUserId()`, `adminDb` → this repo's `db`, and
+  `@/lib/chat-utils` → `@/lib/utils`. `campaign-agents` additionally drops its company filter — here it
+  would exclude everything, since every agent would fail a comparison against an id that does not exist.
+  The query shapes, filters and arithmetic are the source's.
+- **`FirebaseFirestore.Query` → an imported `Query` type** (U4). The ambient namespace is declared by
+  `firebase-admin`'s types, so `tsc` accepts it and eslint's `no-undef` does not. Importing the type is
+  cleaner than a directive and works for both.
 - **The campaign DETAIL page answers 200 unauthenticated, and that is correct** (U3). Its `loading.tsx`
   forces a streamed response, so the status line is committed before the guard resolves — the body is an
   inert skeleton and the redirect travels in the RSC payload. The list page, which has no `loading.tsx`,
