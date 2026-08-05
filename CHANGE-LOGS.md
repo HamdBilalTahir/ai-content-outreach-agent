@@ -6,6 +6,22 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U2: the chat-detail suite
+>
+> - **What changed:** Ported the 15-file chat-detail component family (~2,741 lines) as `src/components/outbound/chat-detail/`, plus a 13th primitive. This is a shared library phase with no route of its own — it is what Campaign Detail, E2E Test, and Parked Test Chats all render.
+> - **This phase moved from U5 to U2 because campaigns cannot land without it, and that is plan revision 1.** Reading `CampaignDetailClient` before starting the campaigns phase showed it imports `ChatDetailView` and `ChatContactList`. Same shape as backend revision 5 — a phase blocked by a phase that comes _after_ it — and the same fix: re-sequence rather than stub. Campaigns became U3a/U3b/U3c, with the list split from the detail because only the detail needs the suite.
+> - **The suite is 15 files, not 9, and 2,741 lines, not 1,657.** The first count came from the four modules the pages import _by name_ and missed the nine those import in turn — `AccordionSection`, `ActivityCard`, `AiComposer`, `AudioPlayer`, `CallTranscriptModal`, and the rest. Total UI scope revised from ~14,500 to ~15,600.
+> - **`checkbox.tsx` is reimplemented on a native input rather than taking `@radix-ui/react-checkbox`.** The ported UI uses exactly two checkboxes — the phone and email opt-out toggles — and both are plain controlled booleans. The reimplementation keeps Radix's **prop** contract (`onCheckedChange`) and its **styling** contract (a `data-state` attribute the call sites target with `data-[state=checked]:bg-rose-500`), which is what lets both call sites stay **byte-identical** to the source. That matters in a port whose only evidence is the diff. It also happened to fix two `implicitly any` errors, because typing the callback explicitly gives the call sites' `v` a type where Radix's `CheckedState` inference had failed. Lost: indeterminate state and `asChild`, neither used — and `tsc` will say so if anyone reaches for them.
+> - **The client-Firestore import repoints to this repo's own module.** `@/lib/firebase/firebase` → `lib/firebase/client`; both export `db`, so it is a path change only. Worth noting the suite reads Firestore **directly from the browser**, not through an API route — which is why it needs the client SDK rather than the admin one.
+> - **Two eslint accommodations, both documented in place rather than rewritten.** `AudioPlayer` annotates handlers with `React.PointerEvent` without importing the namespace. `ActivityCard` uses the omit-by-destructure idiom — `const { id, ...rest } = activity` — where `rest` is rendered as a field list and dropping `id` would print the document id as a field; this repo's rule config does not enable `ignoreRestSiblings`, so the intent is spelled out for the linter.
+> - **The build's four `Dynamic server usage` warnings are pre-existing.** Checked against a stashed baseline: identical count on both, all from the repo's own `/admin`, `/admin/leads`, `/admin/sessions`, `/admin/intelligence`. Not introduced here.
+> - **Files:**
+>   - `src/components/outbound/chat-detail/*` (15 files)
+>   - `src/components/ui/checkbox.tsx`
+> - **Verification:** `tsc --noEmit` clean, `eslint src/components` clean, `next build` exits 0, backend's 2,291 tests still green.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U1: DNC Area Codes
 >
 > - **What changed:** Ported the DNC Area Codes page (`page.tsx` + a 506-line client) as `src/app/admin/outbound/dnc-area-codes/`, mounted the toast host, and added the sidebar's `Outbound` group with its first entry. The first page, deliberately the smallest — it exercises the whole stack on 506 lines instead of E2E Test's 3,840.

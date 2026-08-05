@@ -91,15 +91,30 @@ name.
 | Phase | Scope                                             | Lines  | Commit    |
 | ----- | ------------------------------------------------- | ------ | --------- |
 | U0    | Substrate: deps, 12 primitives, Tailwind-4 tokens | ~950   | `65f7b26` |
-|       | _verified with a real `next build`, not just tsc_ |        |           |
 | U1    | DNC Area Codes                                    | ~506   | `d698629` |
-| U2a   | Campaigns list + detail                           | ~1,160 | —         |
-| U2b   | The audience builder (7 components)               | ~2,240 | —         |
-| U3    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —         |
-| U4    | Attribution Timeline                              | ~1,030 | —         |
-| U5    | The chat-detail suite                             | ~1,657 | —         |
+| U2    | The chat-detail suite (15 files)                  | ~2,741 | —         |
+| U3a   | Campaigns list + `/api/agents/list`               | ~700   | —         |
+| U3b   | Campaign detail                                   | ~520   | —         |
+| U3c   | The audience builder (7 components)               | ~2,240 | —         |
+| U4    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —         |
+| U5    | Attribution Timeline                              | ~1,030 | —         |
 | U6    | E2E Test + its four routes                        | ~3,900 | —         |
 | U7    | Parked Test Chats                                 | ~100   | —         |
+
+**~15,600 lines**, revised up from the first estimate — see revision 1.
+
+## Plan revisions
+
+1. **The chat-detail suite moved from U5 to U2, and it is 2,741 lines rather than 1,657.** Reading
+   `CampaignDetailClient` before starting the campaigns phase showed it imports `ChatDetailView` and
+   `ChatContactList`, so campaigns cannot land before the suite does. The suite is also **15 files, not
+   9** — the first count came from the four modules the pages import by name and missed the nine those
+   import in turn (`AccordionSection`, `ActivityCard`, `AiComposer`, `AudioPlayer`,
+   `CallTranscriptModal`, and the rest).
+
+   Same shape as backend revision 5: a phase blocked by a phase that comes after it, and the fix is to
+   re-sequence rather than stub. Campaigns became U3a/U3b/U3c, and the list is split from the detail
+   because only the detail needs the suite.
 
 **U1 first on purpose.** It is the smallest page, it is fully served by the ported backend, and it
 exercises the whole stack — a primitive, a client component, a server page, a sidebar entry, and a live
@@ -144,6 +159,18 @@ Recorded here as they land.
   tokens — is unchanged.
 - **`initialFocus` → `autoFocus`** (U1) at the Calendar call site, the same v8 → v10 rename as the table on
   `components/ui/calendar.tsx`.
+- **`checkbox.tsx` is reimplemented on a native input** (U2), dropping `@radix-ui/react-checkbox`. The
+  ported UI uses exactly two checkboxes — the phone and email opt-out toggles in `ChatDetailView` — and
+  both are plain controlled booleans. The reimplementation keeps Radix's PROP contract (`onCheckedChange`)
+  and its STYLING contract (a `data-state` attribute), which is what lets both call sites stay
+  byte-identical to the source. Lost: indeterminate state and `asChild`, neither of which is used, and
+  `tsc` will say so if anyone reaches for them.
+- **The suite's client-Firestore import repoints to this repo's own** (U2): `@/lib/firebase/firebase` →
+  `lib/firebase/client`. Both export `db`, so it is a path change only.
+- **Two eslint accommodations in the suite** (U2). `AudioPlayer` annotates handlers with
+  `React.PointerEvent` without importing the namespace; `ActivityCard` uses the omit-by-destructure idiom
+  (`const { id, ...rest }`) that this repo's rule config does not exempt. Both are documented in place — a
+  type import and one directive — rather than rewritten.
 
 ## Notes for later
 
