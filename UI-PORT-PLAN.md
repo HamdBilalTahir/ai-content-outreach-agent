@@ -93,7 +93,7 @@ name.
 | U0    | Substrate: deps, 12 primitives, Tailwind-4 tokens | ~950   | `65f7b26` |
 | U1    | DNC Area Codes                                    | ~506   | `d698629` |
 | U2    | The chat-detail suite (15 files)                  | ~2,741 | `af9a501` |
-| U3    | Campaigns (list, detail, audience builder)        | ~3,400 | —         |
+| U3    | Campaigns (list, detail, audience builder)        | ~3,400 | `2daba4c` |
 | U4    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —         |
 | U5    | Attribution Timeline                              | ~1,030 | —         |
 | U6    | E2E Test + its four routes                        | ~3,900 | —         |
