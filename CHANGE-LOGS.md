@@ -6,6 +6,23 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U5: the Attribution Timeline
+>
+> - **What changed:** Ported the attribution timeline (~1,127 lines: the client, `DealTimelineRail`, `timeline.ts`, page) plus `attribution/chat-events` and `attribution/deals`, and wrote a real route for `analytics/deal-timeline`. Five routes now live under `Outbound`.
+> - **Revision 3 was wrong in BOTH halves, and it is now fully settled.** I had recorded that the Funnel and Timeline stopped calling the Django analytics endpoints. U4 corrected the funnel half. This phase settles the other: the Attribution Timeline calls **both** `analytics/deal-timeline` and `analytics/deal-funnel`. So **neither backend 10d¹ nor 10d³ is dead code** — both are live and probed. The wrong claim came from one bad grep that missed every multi-line `fetch(` call.
+> - **U1's generalization about proxies fails here, and that is the substance of this phase.** U1 established the source's `/api/outbound/*` proxies need no porting, because the catch-all serves the same paths. That holds for AllowAny endpoints and **breaks for key-guarded ones.** Backend 10d³ put `dealTimelineView` behind `requireApiKey` — faithfully, since its Django view is `require_api_key` — and a browser fetch carries no key. So the page's main data call returned `401 API key is required`, which I found by probing rather than by reading. The admin panel hits the same wall and solves it with a proxy whose only job is injecting `X-API-Key` server-side; its own comment says exactly that.
+> - **The fix calls `buildDealTimeline` directly, guarded by the session, rather than re-injecting a key.** The API-key guard authenticates _service-to-service_ callers; here the caller is an authenticated browser session, which is a stronger check, not a weaker one. Synthesizing a request with a key attached to satisfy a guard **in the same process** would be theatre — it would prove only that the file can read its own environment variable.
+> - **And the cost is recorded rather than glossed.** That static route shadows the catch-all for the path — the trailing-slash form included, which Next normalizes into it — so `dealTimelineView` is **no longer reachable over HTTP**. It stays correct and covered by its tests, but nothing calls it through the mount. Acceptable because no service caller exists (in the source these are two different URLs; here they collapse onto one), and inventing a second path to preserve an unused surface would be speculative. I had written the opposite in a comment and corrected it after probing the trailing slash.
+> - **Two routes ported with the now-familiar three substitutions** — `auth()` → `getAuthenticatedUserId()`, `adminDb` → this repo's `db` with its unreachable null guard dropped, `@/lib/chat-utils` → `@/lib/utils`. `chat-events` is the client's fallback when the merged timeline is unavailable, and its Timestamp-to-ISO serialization is preserved exactly, because the client's derivation expects `toDate()`/string/number.
+> - **Everything else composed without incident.** The client imports `campaigns/shared`, `SearchableSelect` (U3), `ChatDetailView` and `chat-detail/helpers` (U2) — all already in place, which is what the re-sequencing in revision 1 was for.
+> - **Files:**
+>   - `src/app/admin/outbound/attribution-timeline/**` (page, 3 components)
+>   - `src/app/api/outbound/attribution/{chat-events,deals}/route.ts`
+>   - `src/app/api/outbound/analytics/deal-timeline/route.ts`, `src/app/admin/SidebarNav.tsx`
+> - **Verification:** `tsc --noEmit` clean, `eslint` clean over the ported files, `next build` exits 0 emitting all four routes, backend's 2,291 tests still green, and probed live — new routes 401 unauthenticated, page 307s, and the 401-API-key failure confirmed fixed.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U4: the Funnel
 >
 > - **What changed:** Ported the funnel dashboard (~2,264 lines: the 1,522-line client, the chats drawer, `MultiSelect`, types and test-data) plus three API routes it needs — `funnel/chat-counts`, `funnel/drill`, `campaign-agents`. Four routes now live under `Outbound`.

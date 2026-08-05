@@ -143,12 +143,18 @@ name.
    UI actually calls rather than repointing it back at the Django-shaped ones. The endpoint table above is
    re-surveyed at U4.
 
-   **Corrected at U4 — this was half wrong.** The funnel did not stop calling `analytics/deal-funnel`; it
+   **Corrected twice — this was wrong in both halves.** At U4: the funnel did not stop calling
+   `analytics/deal-funnel`; it ADDED `funnel/chat-counts` alongside it. At U5: the Attribution Timeline
+   calls **both** `analytics/deal-timeline` and `analytics/deal-funnel`. So **neither 10d¹ nor 10d³ is dead
+   code** — both are live, verified by live probe. The original claim came from a grep that missed every
+   multi-line `fetch(` call, which is the actual lesson.
+
+   The U4 half, for the record: The funnel did not stop calling `analytics/deal-funnel`; it
    ADDED `funnel/chat-counts` alongside it. The two halves of the dashboard have different sources: the
    chat-stage columns (New/Contacted/Engaged/Lost) count Firestore chats, while the deal-stage columns
    still come from the ported `dealFunnelView`. So **backend phase 10d¹ is used after all** — verified live,
    `/api/outbound/analytics/deal-funnel` returns its 400-for-missing-`agent_id` through the route table.
-   10d³ (the timeline) is still an open question until U5 surveys it.
+   Settled at U5: 10d³ is used too.
 
    The lesson stands even though the conclusion narrowed: a grep for `fetch('/api/...` missed both
    multi-line calls, and the correction came from re-reading the client rather than the survey. Endpoint
@@ -233,6 +239,23 @@ Recorded here as they land.
 - **`FirebaseFirestore.Query` → an imported `Query` type** (U4). The ambient namespace is declared by
   `firebase-admin`'s types, so `tsc` accepts it and eslint's `no-undef` does not. Importing the type is
   cleaner than a directive and works for both.
+- **`analytics/deal-timeline` needed a real route, and U1's generalization fails here** (U5). U1
+  established that the source's `/api/outbound/*` proxies need no porting, because the backend catch-all
+  serves the same paths. That holds for AllowAny endpoints and **breaks for key-guarded ones**: backend
+  10d³ put `dealTimelineView` behind `requireApiKey`, faithfully mirroring its Django view, and a browser
+  fetch carries no key — so the page's main data call returned `401 API key is required`. The admin panel
+  hits the same wall and solves it with a proxy whose only job is injecting `X-API-Key` server-side.
+
+  The port calls `buildDealTimeline` directly instead, guarded by the session. The key guard authenticates
+  SERVICE callers; here the caller is an authenticated browser session, a stronger check. Synthesizing a
+  request with a key to satisfy a guard in the same process would prove only that the file can read its own
+  environment variable.
+
+  **The cost, recorded rather than glossed:** this static route shadows the catch-all for the path — the
+  trailing-slash form included, which Next normalizes — so `dealTimelineView` is no longer reachable over
+  HTTP. It stays correct and tested, but nothing calls it through the mount. Acceptable because no service
+  caller exists; worth knowing if one ever needs it, because the path is taken.
+
 - **The campaign DETAIL page answers 200 unauthenticated, and that is correct** (U3). Its `loading.tsx`
   forces a streamed response, so the status line is committed before the guard resolves — the body is an
   inert skeleton and the redirect travels in the RSC payload. The list page, which has no `loading.tsx`,
