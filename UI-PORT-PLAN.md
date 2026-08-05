@@ -95,7 +95,7 @@ name.
 | U2    | The chat-detail suite (15 files)                  | ~2,741 | `af9a501` |
 | U3    | Campaigns (list, detail, audience builder)        | ~3,400 | `2daba4c` |
 | U4    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,264 | `dac2b8e` |
-| U5    | Attribution Timeline                              | ~1,030 | —         |
+| U5    | Attribution Timeline                              | ~1,127 | `f0006d3` |
 | U6    | E2E Test + its four routes                        | ~3,900 | —         |
 | U7    | Parked Test Chats                                 | ~100   | —         |
 
