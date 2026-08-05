@@ -40,6 +40,10 @@ const NAV_CATEGORIES = [
         label: 'Attribution Timeline',
       },
       { href: '/admin/outbound/e2e-test', label: 'E2E Test' },
+      {
+        href: '/admin/outbound/parked-test-chats',
+        label: 'Parked Test Chats',
+      },
       { href: '/admin/outbound/dnc-area-codes', label: 'DNC Area Codes' },
     ],
   },

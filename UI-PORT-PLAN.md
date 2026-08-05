@@ -100,7 +100,7 @@ name.
 | U6b   | E2E Test page + client (one 3,829-line file)      | ~3,868 | `9ff4a01` |
 | U7    | Parked Test Chats                                 | ~100   | —         |
 
-**~15,600 lines**, revised up from the first estimate — see revision 1.
+**~17,500 lines** as actually built, against a first estimate of ~14,500. **The UI port is complete.**
 
 ## Plan revisions
 

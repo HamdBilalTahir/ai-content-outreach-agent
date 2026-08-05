@@ -6,6 +6,19 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U7: Parked Test Chats — **the UI port is complete**
+>
+> - **What changed:** Ported Parked Test Chats — the wrapper page, the 1,084-line shared client, and its two API routes. **All six routes under `Outbound` are now live**, matching the sidebar in full: Campaigns, Funnel, Attribution Timeline, E2E Test, Parked Test Chats, DNC Area Codes.
+> - **This phase was ~1,400 lines, not the ~100 the plan said — plan revision 5.** The visible page is a ten-line wrapper; the client lives **outside** the outbound tree at `admin/parked-test-chats/components/`, shared with the inbound screen, and needs two more API routes. My original count had measured only the wrapper.
+> - **A closing observation on this plan's estimates, since it held five times out of five:** every phase estimate that was not re-surveyed came in **low**, and none came in high. The direction is systematic — what gets missed is always a _transitive_ dependency, never an unnecessary one. Counting a directory tells you what a phase contains, not what it needs.
+> - **Two routes, three substitutions, no surprises** — `auth()` → `getAuthenticatedUserId()`, `adminDb` → this repo's `db` with its unreachable null guard dropped, and Next 16's `params` awaited. The list route's fallback is preserved as-is: it orders by `_parked_at` and catches into an unordered read, because older documents predate that field and an ordered query silently excludes them.
+> - **Two lint accommodations, both now familiar**: a bare `React.ReactNode` annotation, and one more omit-by-destructure — here `_ms`, a sort key added upstream and stripped so it never reaches the client.
+> - **Verified the whole surface, not just this phase.** All six pages 307 correctly, both new routes 401 unauthenticated, the backend catch-all still serving `dnc/area-codes`, `campaigns` and `analytics/deal-funnel`, and a clean dev-server log.
+> - **Files:** `src/app/admin/outbound/parked-test-chats/page.tsx`, `src/app/admin/parked-test-chats/components/ParkedTestChatsClient.tsx`, `src/app/api/admin/parked-test-chats/{route.ts,[chatId]/route.ts}`, `src/app/admin/SidebarNav.tsx`
+> - **Verification:** `tsc --noEmit` clean, `eslint` clean over the ported files, `next build` exits 0, backend's 2,291 tests still green.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U6b: the E2E Test client
 >
 > - **What changed:** Ported the E2E Test page and its client — at 3,829 lines, **the largest single file in either port**. Five of the six outbound routes are now live.
