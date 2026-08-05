@@ -39,6 +39,7 @@ const NAV_CATEGORIES = [
         href: '/admin/outbound/attribution-timeline',
         label: 'Attribution Timeline',
       },
+      { href: '/admin/outbound/e2e-test', label: 'E2E Test' },
       { href: '/admin/outbound/dnc-area-codes', label: 'DNC Area Codes' },
     ],
   },

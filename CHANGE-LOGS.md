@@ -6,6 +6,17 @@
 
 ---
 
+> ### Outbound admin UI port — Phase U6b: the E2E Test client
+>
+> - **What changed:** Ported the E2E Test page and its client — at 3,829 lines, **the largest single file in either port**. Five of the six outbound routes are now live.
+> - **It composed with no substantive changes at all**, which is the phase's actual result. Its only imports are `useComposerHistory` (U2), `cn` (U0), `lucide-react` and `react`; the nine endpoints it calls all landed in U6a; and the twelve primitives were already in place. The whole file needed one `sed` for the primitive import path and nothing else. That is what the earlier sequencing decisions bought — revision 1 moving the chat-detail suite ahead of campaigns, and revision 4 splitting the routes out of U6.
+> - **Two lint accommodations, both already established patterns.** Three more `react-hooks/exhaustive-deps` directives became prose (this repo has no react-hooks plugin, so they errored as unknown rules), and one more omit-by-destructure — `const { id, ...rest } = activity`, where `rest` is used five times and dropping `id` would print the document id as a field. I checked that rather than assuming it matched `ActivityCard`'s case.
+> - **Verified every outbound page, not just the new one.** All five — Campaigns, Funnel, Attribution Timeline, E2E Test, DNC Area Codes — 307 correctly for an unauthenticated request, with a clean dev-server log. Worth doing as a set: this is the first phase where a shared-component regression could have broken pages landed three phases ago.
+> - **Files:** `src/app/admin/outbound/e2e-test/{page.tsx,components/OutboundE2ETestClient.tsx}`, `src/app/admin/SidebarNav.tsx`
+> - **Verification:** `tsc --noEmit` clean, `eslint` clean over the ported files, `next build` exits 0, backend's 2,291 tests still green, five pages probed live.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U6a: the E2E Test API routes
 >
 > - **What changed:** Ported the nine API routes the E2E Test screen needs (~709 lines) — `park-chat`, `trigger-ai`, `opt-out`, `runs`, `agents/has-outbound-skill`, `initiate`, `voice-workers/transcript`, `elevenlabs/conversations/[id]/audio`, `admin/monitoring/chat`. The 3,829-line client follows in U6b.
