@@ -98,7 +98,7 @@ name.
 | U5    | Attribution Timeline                              | ~1,127 | `f0006d3` |
 | U6a   | E2E Test's nine API routes                        | ~709   | `8b4a2a6` |
 | U6b   | E2E Test page + client (one 3,829-line file)      | ~3,868 | `9ff4a01` |
-| U7    | Parked Test Chats                                 | ~100   | —         |
+| U7    | Parked Test Chats                                 | ~1,400 | `496e656` |
 
 **~17,500 lines** as actually built, against a first estimate of ~14,500. **The UI port is complete.**
 
