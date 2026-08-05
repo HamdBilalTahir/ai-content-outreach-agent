@@ -93,9 +93,7 @@ name.
 | U0    | Substrate: deps, 12 primitives, Tailwind-4 tokens | ~950   | `65f7b26` |
 | U1    | DNC Area Codes                                    | ~506   | `d698629` |
 | U2    | The chat-detail suite (15 files)                  | ~2,741 | `af9a501` |
-| U3a   | Campaigns list + `/api/agents/list`               | ~700   | —         |
-| U3b   | Campaign detail                                   | ~520   | —         |
-| U3c   | The audience builder (7 components)               | ~2,240 | —         |
+| U3    | Campaigns (list, detail, audience builder)        | ~3,400 | —         |
 | U4    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,100 | —         |
 | U5    | Attribution Timeline                              | ~1,030 | —         |
 | U6    | E2E Test + its four routes                        | ~3,900 | —         |
@@ -115,6 +113,35 @@ name.
    Same shape as backend revision 5: a phase blocked by a phase that comes after it, and the fix is to
    re-sequence rather than stub. Campaigns became U3a/U3b/U3c, and the list is split from the detail
    because only the detail needs the suite.
+
+2. **Campaigns is ONE phase, not three — and the source repo is live.** Two findings, from mapping the
+   campaigns import graph before starting rather than during.
+
+   The split does not exist: `CampaignsClient` (the list) imports `NewCampaignSheet`, which imports all
+   five audience tabs, which import `AudiencePreview`, `SearchableSelect`, and the three helper modules.
+   The list alone pulls in essentially the whole tree, so U3a/U3b/U3c collapse into **U3**. Same reasoning
+   as keeping the chat-detail suite whole: a split that ships a broken intermediate is not a split.
+
+   More importantly, **`ui-admin-panel` is being edited while this port runs, including uncommitted
+   working-tree changes.** Its HEAD moved to `b6fe7ee` (2026-08-05, "move entire Skills data layer to
+   Admin SDK") mid-phase, and four files in scope carry ` M` status —
+   `campaigns/shared.tsx`, `AttributionTimelineClient`, `FunnelChatsDrawer`, `FunnelDashboardClient` —
+   while `app/api/outbound/{agents,attribution,funnel}/` are untracked entirely.
+
+   This is backend revision 9 recurring, one degree worse: not just a moving HEAD but a dirty tree, so the
+   snapshot being ported **cannot be reproduced from git**. Porting continues against the working tree —
+   it is the live source of truth and the uncommitted changes are real improvements — but every phase
+   re-surveys its own files first, and the divergence list records what was taken.
+
+3. **The Funnel and Attribution Timeline no longer call the Django analytics endpoints.** The re-survey
+   at U3 found they now fetch `/api/outbound/funnel/chat-counts`, `/api/outbound/funnel/drill`, and
+   `/api/outbound/attribution/*` — new, untracked routes that read Firestore directly through the Admin
+   SDK, replacing `analytics/deal-funnel` and `analytics/deal-timeline`.
+
+   Consequence worth stating plainly: **backend phases 10d¹ and 10d³ ported views the UI has since stopped
+   using.** They are still correct and still mounted, but U4/U5 will port the Firestore-direct routes the
+   UI actually calls rather than repointing it back at the Django-shaped ones. The endpoint table above is
+   re-surveyed at U4.
 
 **U1 first on purpose.** It is the smallest page, it is fully served by the ported backend, and it
 exercises the whole stack — a primitive, a client component, a server page, a sidebar entry, and a live
@@ -167,6 +194,29 @@ Recorded here as they land.
   `tsc` will say so if anyone reaches for them.
 - **The suite's client-Firestore import repoints to this repo's own** (U2): `@/lib/firebase/firebase` →
   `lib/firebase/client`. Both export `db`, so it is a path change only.
+- **`companyId` is threaded through as an empty string** (U3). The source resolves it by reading a
+  `next-auth` session, pulling a `backendToken`, and calling a Django `campaign_maker` endpoint; none of
+  those three exists here. The prop is kept and left empty rather than removed, because
+  `/api/agents/list` is ported to IGNORE the parameter — so an empty value is correct, and threading it
+  keeps three components byte-identical to the source instead of ripping a prop out to save one string.
+- **`/api/agents/list` and `/api/outbound/agents` are written, not ported** (U3) — a sixth and seventh
+  missing endpoint the first survey missed, both reached through `useOutboundAgents`. The list endpoint
+  drops the source's company scoping for the reason above. Note `/api/outbound/agents` is a STATIC
+  segment under the backend's catch-all: Next resolves static ahead of catch-all, so it wins for that one
+  path and everything else still falls through to the ported route table. Verified live — `dnc` and
+  `campaigns` still return 200 through the table.
+- **`@types/papaparse` is declared locally instead of installed** (U3), in `src/types/papaparse.d.ts`.
+  This repo has a PRE-EXISTING peer conflict — `dotenv@^17` against `@browserbasehq/stagehand`'s `^16`,
+  via `@langchain/community` — which makes every `npm install` fail without `--legacy-peer-deps`. Forcing
+  a repo-wide resolution change to get types for one CSV parser is the wrong trade. The declaration covers
+  only the single `parse` overload actually called.
+- **Three `react-hooks/exhaustive-deps` directives became plain comments** (U3). They document deliberate
+  dependency omissions, but this repo's eslint has no react-hooks plugin, so the directives errored as
+  unknown rules. The intent is preserved in prose so it survives if the plugin is ever added.
+- **The campaign DETAIL page answers 200 unauthenticated, and that is correct** (U3). Its `loading.tsx`
+  forces a streamed response, so the status line is committed before the guard resolves — the body is an
+  inert skeleton and the redirect travels in the RSC payload. The list page, which has no `loading.tsx`,
+  307s normally. Verified: the detail body contains the skeleton plus a `/login` redirect and no data.
 - **Two eslint accommodations in the suite** (U2). `AudioPlayer` annotates handlers with
   `React.PointerEvent` without importing the namespace; `ActivityCard` uses the omit-by-destructure idiom
   (`const { id, ...rest }`) that this repo's rule config does not exempt. Both are documented in place — a
