@@ -97,7 +97,7 @@ name.
 | U4    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,264 | `dac2b8e` |
 | U5    | Attribution Timeline                              | ~1,127 | `f0006d3` |
 | U6a   | E2E Test's nine API routes                        | ~709   | `8b4a2a6` |
-| U6b   | E2E Test page + client (one 3,829-line file)      | ~3,868 | —         |
+| U6b   | E2E Test page + client (one 3,829-line file)      | ~3,868 | `9ff4a01` |
 | U7    | Parked Test Chats                                 | ~100   | —         |
 
 **~15,600 lines**, revised up from the first estimate — see revision 1.
