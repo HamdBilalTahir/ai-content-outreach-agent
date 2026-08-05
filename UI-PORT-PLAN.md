@@ -96,7 +96,8 @@ name.
 | U3    | Campaigns (list, detail, audience builder)        | ~3,400 | `2daba4c` |
 | U4    | Funnel + chats drawer + `campaigns/[id]/chats`    | ~2,264 | `dac2b8e` |
 | U5    | Attribution Timeline                              | ~1,127 | `f0006d3` |
-| U6    | E2E Test + its four routes                        | ~3,900 | —         |
+| U6a   | E2E Test's nine API routes                        | ~709   | —         |
+| U6b   | E2E Test page + client (one 3,829-line file)      | ~3,868 | —         |
 | U7    | Parked Test Chats                                 | ~100   | —         |
 
 **~15,600 lines**, revised up from the first estimate — see revision 1.
@@ -133,7 +134,23 @@ name.
    it is the live source of truth and the uncommitted changes are real improvements — but every phase
    re-surveys its own files first, and the divergence list records what was taken.
 
-3. **The Funnel and Attribution Timeline no longer call the Django analytics endpoints.** The re-survey
+3. **E2E Test needs NINE endpoints, not four, so U6 splits in two.** The survey at U6 found the client
+   references twelve API paths. Three are already served — `agents/list` and `outbound/agents` from U3, and
+   `hubspot/delete-records` through the catch-all — leaving eight to write plus one to repoint
+   (`outbound/initiate`, which the backend mounts at `webhook/initiate-outbound/`).
+
+   The missing eight: `voice-workers/transcript`, `trigger-ai`, `runs`, `park-chat`, `opt-out`,
+   `agents/has-outbound-skill`, `elevenlabs/conversations`, `admin/monitoring/chat` — 709 lines together.
+   With the 3,868-line page and client that is ~4,577 for one phase, so **U6a** takes the routes and
+   **U6b** the client. The client is a single 3,829-line file and cannot be split; the routes can be
+   probed live on their own, which makes them the better first half.
+
+   **This is the fourth phase where my endpoint estimate was low**, and the cause is consistent: estimating
+   from the plan's original survey instead of re-surveying the phase's own files. The habit is now in place
+   — this count came from a fresh multi-line-aware grep — but the plan's numbers should be read as
+   provisional until each phase re-checks them.
+
+4. **The Funnel and Attribution Timeline no longer call the Django analytics endpoints.** The re-survey
    at U3 found they now fetch `/api/outbound/funnel/chat-counts`, `/api/outbound/funnel/drill`, and
    `/api/outbound/attribution/*` — new, untracked routes that read Firestore directly through the Admin
    SDK, replacing `analytics/deal-funnel` and `analytics/deal-timeline`.
@@ -256,6 +273,23 @@ Recorded here as they land.
   HTTP. It stays correct and tested, but nothing calls it through the mount. Acceptable because no service
   caller exists; worth knowing if one ever needs it, because the path is taken.
 
+- **Nine routes for E2E Test** (U6a), of which three needed real decisions rather than substitution:
+  - **`voice-workers/transcript` is the one route whose source could not be ported.** It calls the INBOUND
+    Django product, which this repo neither has nor is a port of, with a `backendToken` that does not
+    exist here. Rewritten against `fetchConversationFromElevenlabs` (backend 7b²d) — the same conversation
+    the inbound API was relaying, read from where it originates. The caveat is recorded on the route: the
+    payload is ElevenLabs' verbatim, so a field the inbound service synthesized rather than relayed would
+    show as a blank rather than an error.
+  - **`trigger-ai` calls `runOutboundTurn` in-process** instead of POSTing to Django's
+    `call-llm-outbound/` with a token. Chat resolution is unchanged; `adminTriggerSource: 'human'` matches
+    what the HTTP endpoint defaulted to, and it matters — only a human trigger is authoritative on timing.
+  - **`initiate` is a new route, NOT the repoint the plan called for.** The ported
+    `initiateOutboundWebhookView` has no auth guard — correct for a webhook, `AllowAny` in Django — so
+    pointing a browser button at `webhook/initiate-outbound/` would have put an unauthenticated
+    lead-enrolment endpoint one fetch from the UI. **Verified: an unauthenticated POST to that path reaches
+    the view and returns its own 400.** The new route adds the session guard for the browser path; the
+    webhook path stays open, which is what an external lead source needs.
+- **`FirebaseFirestore.*` → imported types** in `park-chat` too (U6a), same reason as U4.
 - **The campaign DETAIL page answers 200 unauthenticated, and that is correct** (U3). Its `loading.tsx`
   forces a streamed response, so the status line is committed before the guard resolves — the body is an
   inert skeleton and the redirect travels in the RSC payload. The list page, which has no `loading.tsx`,
