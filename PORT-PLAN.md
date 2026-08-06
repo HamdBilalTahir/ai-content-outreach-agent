@@ -85,7 +85,7 @@ one changelog entry, verified before commit.
 | Phase | Scope                                                                       | Commit    |
 | ----- | --------------------------------------------------------------------------- | --------- |
 | D1    | Three new modules: `contactRoles`, `companyFromDomain`, `escalateToHuman`   | `fe6c4cb` |
-| D2    | The referral fork machinery + `resolveActiveOutboundChat`                   | _pending_ |
+| D2    | The referral fork machinery + `resolveActiveOutboundChat`                   | `efd7ec1` |
 | D3    | Review pipeline: contact resolution, escalation, re-home verify, prompts    | _pending_ |
 | D4    | Services: `enroll`, `hubspot`, `chat`, `campaigns`, `stalledRecovery`, cron | _pending_ |
 | D5    | Views/HTTP: cron auth, the three webhooks, campaigns view, `llm/run`        | _pending_ |
