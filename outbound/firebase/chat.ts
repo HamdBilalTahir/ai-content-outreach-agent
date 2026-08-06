@@ -675,6 +675,30 @@ export async function deleteUnexecutedTasksByType(
  * Add a label to `chat.labels`. `arrayUnion` makes this idempotent, which the callers rely on —
  * `not_interested` and `cadence_complete` may be applied repeatedly from different code paths.
  */
+/**
+ * Set (or clear) the chat's escalated flag — the field the FE's "escalated" tab filters on, and the one
+ * every proactive path checks before scheduling anything.
+ *
+ * Best-effort: `false` on error rather than throwing, because every caller sets this alongside other
+ * side effects it does not want to lose.
+ */
+export async function setEscalate(
+  chatId: string,
+  escalateStatus: boolean
+): Promise<boolean> {
+  if (!chatId) return false;
+  try {
+    await db
+      .collection('chats')
+      .doc(chatId)
+      .set({ escalate: Boolean(escalateStatus) }, { merge: true });
+    return true;
+  } catch (e) {
+    console.warn(`[chat] setEscalate failed for ${chatId}: ${e}`);
+    return false;
+  }
+}
+
 export async function addLabelToChat(
   chatId: string,
   label: string

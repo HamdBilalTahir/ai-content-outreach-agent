@@ -99,6 +99,7 @@ import {
   parseAndRunMarkCadenceComplete,
   parseAndRunMarkProspectLost,
 } from '../tools/stageTools';
+import { parseAndRunEscalateToHuman } from '../tools/escalateToHuman';
 import type { BedrockMessage } from '../types';
 import type { GenerateMeta } from './ask';
 
@@ -202,6 +203,13 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     parseAndRunMarkCadenceComplete(c.toolUseId, c.input, c.chatId, c.metaData),
   clear_not_interested: (c) =>
     parseAndRunClearNotInterested(c.toolUseId, c.input, c.chatId),
+  escalate_to_human: (c) =>
+    parseAndRunEscalateToHuman(
+      c.toolUseId,
+      c.input as { reason?: string; evidence?: string },
+      c.chatId,
+      c.metaData
+    ),
 };
 
 /** Tool names this runtime can dispatch. Exposed so the turn entry can report them. */

@@ -449,6 +449,19 @@ export function stopsProactive(chatData: ChatDoc | null | undefined): boolean {
  */
 export const CADENCE_COMPLETE_KEY = 'cadence_complete';
 
+/**
+ * Set when a chat has been handed to a human rep. **Escalated chats are inert to ALL proactive and cron
+ * activity** — no task is created for them and no queued task runs.
+ *
+ * Same trust tier as `labels` and the opt-out keys: read from the top level, never from memory.
+ */
+export const ESCALATED_KEY = 'escalate';
+
+/** True if the chat has been escalated to a human. See {@link ESCALATED_KEY}. */
+export function isEscalated(chatData: ChatDoc | null | undefined): boolean {
+  return Boolean((chatData ?? {})[ESCALATED_KEY]);
+}
+
 const TERMINAL_STAGES: ReadonlySet<string> = new Set(['lost', 'closed_lost']);
 
 /** True if the chat's outreach cadence is marked complete. */

@@ -6,6 +6,22 @@
 
 ---
 
+> ### Outbound port — Drift sync D1: three new upstream modules
+>
+> - **What changed:** The backend source has moved substantially since the port completed — **30 commits, +2,417/−237 across 29 files** since 2026-08-04, including three modules that did not exist when I ported. D1 lands those three: `contactRoles.ts` (216), `companyFromDomain.ts` (200), and `escalateToHuman.ts` (287), wired into the dispatch table as its thirteenth tool.
+> - **`escalate_to_human` is a whole tool the port had no equivalent for.** It landed upstream on 2026-08-05 — genuinely new work, not something missed — and is wired into the source's dispatch loop. It hands a buyer-capable prospect the AI cannot close to a human rep: stage → `Lead`/`pre_booking`, both channels opted out, every pending task cancelled, the FE's escalated flag set, and a HubSpot deal created at the **Pre-Booking** stage with one handover note.
+> - **Its exclusivity with demo booking is structural, and needs two mechanisms.** A guard refuses to escalate a chat already on the booking path, _and_ the deal step pre-writes `hubspot_deal_id` + `_hubspot_synced_stage: 'Lead'` so the normal Lead→"Initial Demo Scheduled" push sees an existing deal and never runs. Without the second, a later stage sync would drag an escalated lead into the demo stage behind the rep's back.
+> - **Escalation deliberately fires at ANY live stage.** Only terminal or unknown stages are refused. The source's comment explains why: the review-driven path runs while the chat is still `Contacted`, _before_ the Engaged advance, so gating on a later stage would stop it firing at all. The real judgement belongs to the review classifier, not the funnel label.
+> - **`assume_lead` had nothing to bypass here.** The source passes it to skip a guard that refuses a sub_stage on a non-Lead chat — needed because it has just set the stage and cannot read it back yet. This port's `setProspectSubStage` carries no such guard (a Phase 1 simplification), so it already behaves as if the flag were set. Recorded on the call site rather than adding a parameter that would do nothing.
+> - **Two LLM modules, both nearly free by construction.** `contactRoles` decides which contact a shared dealership line represents — most senior wins, newest breaks a tie — and `companyFromDomain` turns an email domain into a dealership name (`mbtemecula.com` → "Mercedes-Benz of Temecula"). Each is called only when needed (2+ contacts on a line; a contact with no company), and each caches per distinct value in Firestore, so repeats cost nothing. Both use the port's existing `llmText` + `parseJsonResponse` seam rather than the source's Bedrock `output_config` — and note the source parses defensively too, so it does not fully trust that constraint either.
+> - **A derived company name is written to the CHAT only, never to HubSpot.** It is a guess, and the enrollment and sync paths guard on `_company_is_derived`. Free-mail domains resolve to blank and never reach the model at all — asking what dealership is at `gmail.com` invites an invention, and an invented company is worse than a blank because the agent would say it out loud.
+> - **Two small helpers were missing and are now added**: `isEscalated` in `services/chat.ts` and `setEscalate` in `firebase/chat.ts`. The handover note's transcript comes from `hubspotDeals.recentTranscript` rather than the source's `inbound_booking_email._recent_transcript`, which is an inbound module deliberately not ported (plan revision 6).
+> - **The dispatch-table assertion caught the wiring**, which is exactly what it is for — it failed until `escalate_to_human` was added to the expected list.
+> - **Files:** `outbound/services/{contactRoles,companyFromDomain}.ts`, `outbound/tools/escalateToHuman.ts`, `outbound/services/chat.ts`, `outbound/firebase/chat.ts`, `outbound/llm/run.ts`, `outbound/__tests__/llm/run.test.ts`
+> - **Verification:** `tsc --noEmit` clean, `eslint outbound/` clean, 2,291 tests across 56 suites green.
+>
+> ---
+>
 > ### Outbound admin UI port — Phase U7: Parked Test Chats — **the UI port is complete**
 >
 > - **What changed:** Ported Parked Test Chats — the wrapper page, the 1,084-line shared client, and its two API routes. **All six routes under `Outbound` are now live**, matching the sidebar in full: Campaigns, Funnel, Attribution Timeline, E2E Test, Parked Test Chats, DNC Area Codes.

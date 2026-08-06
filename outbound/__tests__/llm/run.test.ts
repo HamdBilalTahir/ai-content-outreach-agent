@@ -194,6 +194,7 @@ describe('the dispatch table', () => {
       'clear_not_interested',
       'create_custom_task',
       'delete_custom_task',
+      'escalate_to_human',
       'get_hubspot_available_slots',
       'make_phone_call',
       'make_phone_call_from_number',
