@@ -74,7 +74,26 @@ deferral ledger holding nothing but two permanently-unreachable functions.
 | 10e¹  | Six backfills + the two operational runners       | ~571         | `532647f` |
 | 10e²  | `backfill_website_verified_business`              | ~280         | `4bc47ee` |
 
-Current: **2,291 tests / 56 suites**, `tsc` and `eslint` clean. **The port is complete.**
+Current: **2,308 tests / 56 suites**, `tsc` and `eslint` clean. **The port is complete.**
+
+## Drift sync (the source kept moving)
+
+The backend source advanced **30 commits, +2,417/−237 across 29 files** between 2026-08-04 and the scan.
+This is not port work left undone — it is upstream change since. Same rhythm: one increment, one commit,
+one changelog entry, verified before commit.
+
+| Phase | Scope                                                                       | Commit    |
+| ----- | --------------------------------------------------------------------------- | --------- |
+| D1    | Three new modules: `contactRoles`, `companyFromDomain`, `escalateToHuman`   | `fe6c4cb` |
+| D2    | The referral fork machinery + `resolveActiveOutboundChat`                   | _pending_ |
+| D3    | Review pipeline: contact resolution, escalation, re-home verify, prompts    | _pending_ |
+| D4    | Services: `enroll`, `hubspot`, `chat`, `campaigns`, `stalledRecovery`, cron | _pending_ |
+| D5    | Views/HTTP: cron auth, the three webhooks, campaigns view, `llm/run`        | _pending_ |
+| D6    | UI drift since U7                                                           | _pending_ |
+
+**D2 was re-split off the announced D3 scope.** The new review orchestrator calls
+`handleReferralTransfer` with `force_same_line` and `archive_reason`, which this port's signature lacked
+— so the fork machinery is a hard prerequisite and lands first rather than being stubbed.
 
 ## Plan revisions (and why)
 
@@ -390,8 +409,10 @@ provisioner's `getToolsForAgent`, both permanently unreachable.
 
 - `chat.ensureMeetingHost`, deferred out of Phase 3. Its pure half `meetingHostFact` is ported.
 - The six enrollment/contacted CRM stamps deferred out of Phase 5 (see the enroll seam above).
-- `resolveAudiencePage`'s HubSpot contact sources (Phase 5) and `referralTransfer`'s CRM lookup
-  (Phase 7a).
+- `resolveAudiencePage`'s HubSpot contact sources (Phase 5). ~~and `referralTransfer`'s CRM lookup
+  (Phase 7a)~~ — **this half was NOT delivered here; the claim was wrong.** `referralTransfer.ts` was
+  last touched at Phase 7b¹ and left `contactId` hardcoded `null`. Found and closed during drift sync
+  D2, where it stopped being cosmetic: the same-line fork keys the new chat's doc id on the contact id.
 - `makePhoneCall`'s availability injection and `tools/email`'s stage sync (Phase 7b²a, 6b¹).
 - The review's four HubSpot calls (Phase 7b²b²) — `resolveBookingSlot` fills the injected parameter;
   `maybeAddDealConversationNote`, `preservePriorEmailOnContact`, and `syncHubspotStage` were each

@@ -832,12 +832,10 @@ export async function parseAndRunReviewCallTranscript(
         (!!refPhone && !ownPhones.has(refPhone));
       if (ref?.is_referral && !isDemo && referredIsDifferentPerson) {
         try {
-          const rr = await handleReferralTransfer(
-            chatId,
-            ref,
-            ref.referrer_name,
-            'review_call'
-          );
+          const rr = await handleReferralTransfer(chatId, ref, {
+            referrer: ref.referrer_name,
+            source: 'review_call',
+          });
           if (rr.ok) {
             referralHandled = true;
             memoryChanges.push(

@@ -538,12 +538,10 @@ export async function reviewEmail(
 
     const ref = prefs.referral;
     if (ref?.is_referral && (ref.referred_email || ref.referred_phone)) {
-      await handleReferralTransfer(
-        chatId,
-        ref,
-        ref.referrer_name,
-        'review_email'
-      );
+      await handleReferralTransfer(chatId, ref, {
+        referrer: ref.referrer_name,
+        source: 'review_email',
+      });
     } else if (
       prefs.customer_sentiment === 'not_interested' ||
       prefs.ending_reason === 'customer_said_not_interested'

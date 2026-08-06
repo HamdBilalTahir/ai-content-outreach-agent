@@ -101,6 +101,55 @@ export function buildDeterministicChatId(
   return `${safeAgent}__${safeUser}`;
 }
 
+/**
+ * The chat an INBOUND call or reply from `userKey` (phone or email) should land on.
+ *
+ * Normally that is the deterministic phone-keyed chat. But a REFERRAL SWITCH archives that chat and moves
+ * outreach to a new chat under a CUSTOM doc id carrying the same `userId` — so when the deterministic chat
+ * is missing or ARCHIVED, prefer the newest NON-archived outbound chat on the line.
+ *
+ * Deliberately conservative: it only deviates from the deterministic id when that chat is archived or
+ * absent, so an ordinary number behaves exactly as before. Returns a chat id, or `null`. Best-effort.
+ */
+export async function resolveActiveOutboundChat(
+  agentId: string,
+  userKey: string
+): Promise<string | null> {
+  const det = 'outbound__' + buildDeterministicChatId(agentId, userKey);
+  try {
+    const d = await db.collection('chats').doc(det).get();
+    const dd = (d.data() ?? {}) as ChatDoc;
+    if (d.exists && !dd.archived && dd.status !== 'archived') return det;
+
+    // Deterministic chat missing or archived → newest active outbound chat on this line.
+    let best: string | null = null;
+    let bestTs = '';
+    const snap = await db
+      .collection('chats')
+      .where('userId', '==', userKey)
+      .limit(25)
+      .get();
+    for (const doc of snap.docs) {
+      const cd = (doc.data() ?? {}) as ChatDoc;
+      if (cd.type !== 'outbound' || String(cd.agentId) !== String(agentId)) {
+        continue;
+      }
+      if (cd.archived || cd.status === 'archived') continue;
+      const ts = String(cd.status_changed_at ?? cd.createdAt ?? '');
+      if (best === null || ts > bestTs) {
+        best = doc.id;
+        bestTs = ts;
+      }
+    }
+    return best ?? (d.exists ? det : null);
+  } catch (e) {
+    console.warn(
+      `[OB] resolveActiveOutboundChat(${agentId},${userKey}) failed: ${e}`
+    );
+    return det;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent-name resolution (name-agnostic; no hardcoded persona)
 // ─────────────────────────────────────────────────────────────────────────────

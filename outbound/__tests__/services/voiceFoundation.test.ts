@@ -8,8 +8,9 @@
  * that no behavioural instruction leaks in.
  *
  * The referral transfer's defining property is the ASYMMETRY between the two chats: warm identity and a
- * non-gating highlight on the NEW chat, only a stop label on the SOURCE, with its stage and opt-outs
- * untouched. Conflating it with a decline is the likely mistake, so that distinction is pinned directly.
+ * non-gating highlight on the NEW chat, a HARD STOP on the SOURCE (both opt-outs, tasks cancelled,
+ * archived — outreach now points at the real person). Conflating it with a decline is the likely mistake,
+ * so that distinction is pinned directly, as is the key gate that refuses a fork it cannot reach.
  */
 /* eslint-disable no-undef -- jest globals; the flat config declares no jest environment */
 
@@ -43,6 +44,7 @@ import {
 import {
   NOT_INTERESTED_LABEL,
   REFERRAL_TRANSFERRED_LABEL,
+  resolveActiveOutboundChat,
 } from '../../services/chat';
 import { COLLECTION as DNC_COLLECTION } from '../../services/dncAreaCodes';
 import type { ChatMemory } from '../../types';
@@ -472,7 +474,9 @@ describe('referral transfer', () => {
   };
 
   it('creates a NEW chat in the SAME campaign and seeds warm identity', async () => {
-    const r = await handleReferralTransfer(CHAT, referred, 'Dana in ops');
+    const r = await handleReferralTransfer(CHAT, referred, {
+      referrer: 'Dana in ops',
+    });
     expect(r.ok).toBe(true);
     expect(r.campaign_id).toBe('camp1');
     expect(r.new_chat_id).toBeTruthy();
@@ -488,7 +492,9 @@ describe('referral transfer', () => {
   });
 
   it('rewrites the first-touch notes so a referral never gets a COLD open', async () => {
-    const r = await handleReferralTransfer(CHAT, referred, 'Dana in ops');
+    const r = await handleReferralTransfer(CHAT, referred, {
+      referrer: 'Dana in ops',
+    });
     const tasks = store.collection(`chats/${r.new_chat_id}/tasks`);
     expect(tasks).toHaveLength(1);
     const notes = String((tasks[0][1].data as Record<string, unknown>).notes);
@@ -497,7 +503,9 @@ describe('referral transfer', () => {
   });
 
   it('HIGHLIGHTS the new chat without gating it — comms still go out', async () => {
-    const r = await handleReferralTransfer(CHAT, referred, 'Dana');
+    const r = await handleReferralTransfer(CHAT, referred, {
+      referrer: 'Dana',
+    });
     const labels = (store.get(`chats/${r.new_chat_id}`)!.labels ??
       []) as string[];
     expect(labels).toContain(REFERRAL_HIGHLIGHT_LABEL);
@@ -508,40 +516,77 @@ describe('referral transfer', () => {
     expect(store.collection(`chats/${r.new_chat_id}/tasks`)).toHaveLength(1);
   });
 
-  it('stops the SOURCE chat and cancels its pending tasks', async () => {
+  it('HARD-STOPS the source: both opt-outs, tasks cancelled, archived', async () => {
     store.set(`chats/${CHAT}/tasks/pending`, {
       type: 'followup_if_no_reply',
       executed: false,
     });
-    await handleReferralTransfer(CHAT, referred, 'Dana');
+    const r = await handleReferralTransfer(CHAT, referred, {
+      referrer: 'Dana',
+    });
     const src = store.get(`chats/${CHAT}`)!;
-    expect((src.labels ?? []) as string[]).toContain(
-      REFERRAL_TRANSFERRED_LABEL
-    );
+    expect(src.phone_opt_out).toBe(true);
+    expect(src.email_opt_out).toBe(true);
+    expect(src.archived).toBe(true);
+    expect(src.status).toBe('archived');
+    expect(src.archive_reason).toBe('referred_to_new_contact');
+    expect(src._referred_to_chat).toBe(r.new_chat_id);
     expect(store.get(`chats/${CHAT}/tasks/pending`)).toBeUndefined();
   });
 
-  it('leaves the SOURCE stage and opt-outs untouched — a referral is not a consent signal', async () => {
-    await handleReferralTransfer(CHAT, referred, 'Dana');
-    const src = store.get(`chats/${CHAT}`)!;
-    expect(src.stage).toBe('Contacted'); // not Lost
-    expect(src.phone_opt_out).toBe(false);
-    expect(src.email_opt_out).toBe(false);
+  it('stamps the caller’s archive_reason on the source', async () => {
+    await handleReferralTransfer(CHAT, referred, {
+      referrer: 'Dana',
+      archiveReason: 'identity_mismatch',
+    });
+    expect(store.get(`chats/${CHAT}`)!.archive_reason).toBe(
+      'identity_mismatch'
+    );
   });
 
   it('puts NO referral-identity keys on the source chat', async () => {
-    await handleReferralTransfer(CHAT, referred, 'Dana');
+    await handleReferralTransfer(CHAT, referred, { referrer: 'Dana' });
     const m = store.get(`chats/${CHAT}`)!.memory as Record<string, unknown>;
     expect(m._is_referral).toBeUndefined();
     expect(m.referred_by).toBeUndefined();
     expect(m._referred_from_chat_id).toBeUndefined();
   });
 
+  it('points the two chats at each other', async () => {
+    const r = await handleReferralTransfer(CHAT, referred, {
+      referrer: 'Dana',
+    });
+    expect(store.get(`chats/${r.new_chat_id}`)!.referrer_chat_id).toBe(CHAT);
+    expect(store.get(`chats/${CHAT}`)!._referred_to_chat).toBe(r.new_chat_id);
+  });
+
+  it('refuses to switch a chat that is ITSELF a referral, or already switched', async () => {
+    const base = store.get(`chats/${CHAT}`)!;
+    const baseMem = base.memory as Record<string, unknown>;
+    store.set(`chats/${CHAT}`, {
+      ...base,
+      memory: { ...baseMem, _is_referral: true },
+    });
+    expect(await handleReferralTransfer(CHAT, referred)).toMatchObject({
+      ok: false,
+      error: 'source already referral / already switched',
+    });
+
+    store.set(`chats/${CHAT}`, {
+      ...base,
+      memory: { ...baseMem, _referred_to_chat: 'other' },
+    });
+    expect(await handleReferralTransfer(CHAT, referred)).toMatchObject({
+      ok: false,
+      error: 'source already referral / already switched',
+    });
+  });
+
   it('accepts both key spellings for the referred person', async () => {
     const r = await handleReferralTransfer(
       CHAT,
       { email: 'plain@acme.com', first_name: 'Sam' },
-      'Dana'
+      { referrer: 'Dana' }
     );
     expect(r.ok).toBe(true);
     const m = store.get(`chats/${r.new_chat_id}`)!.memory as Record<
@@ -551,10 +596,33 @@ describe('referral transfer', () => {
     expect(m.customer_email).toBe('plain@acme.com');
   });
 
-  it('refuses without a reachable channel or an agent on the source', async () => {
+  it('lets the referred company OVERRIDE the source company', async () => {
+    const r = await handleReferralTransfer(
+      CHAT,
+      { ...referred, referred_company: 'Frontier Chevrolet' },
+      { referrer: 'Dana' }
+    );
+    const m = store.get(`chats/${r.new_chat_id}`)!.memory as Record<
+      string,
+      unknown
+    >;
+    expect(m.company).toBe('Frontier Chevrolet');
+  });
+
+  it('refuses a name-only referral with no reachable channel', async () => {
+    // "Andre, over at the Ford store" — a real name, but nothing to reach him on and not on this line.
     expect(
-      await handleReferralTransfer(CHAT, { referred_first_name: 'Sam' })
-    ).toMatchObject({ ok: false });
+      await handleReferralTransfer(CHAT, { referred_first_name: 'Andre' })
+    ).toMatchObject({ ok: false, insufficient_keys: true });
+  });
+
+  it('refuses when the key gate is missing a NAME even with a reachable channel', async () => {
+    expect(
+      await handleReferralTransfer(CHAT, { referred_email: 'x@acme.com' })
+    ).toMatchObject({ ok: false, insufficient_keys: true });
+  });
+
+  it('refuses without an agent on the source', async () => {
     store.set(`chats/${CHAT}`, { type: 'outbound', memory: {} });
     expect(await handleReferralTransfer(CHAT, referred)).toMatchObject({
       ok: false,
@@ -580,11 +648,242 @@ describe('referral transfer', () => {
   });
 
   it('falls back to a generic referrer when none is named', async () => {
-    const r = await handleReferralTransfer(CHAT, referred, null);
+    const r = await handleReferralTransfer(CHAT, referred, { referrer: null });
     const m = store.get(`chats/${r.new_chat_id}`)!.memory as Record<
       string,
       unknown
     >;
     expect(m.referred_by).toBe('your team at Acme');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The SAME-LINE fork: "there's no Claira, it's Chris" on the dealership's one number. There is no
+ * distinct email or phone to key a chat on, so the whole point is that the new chat lives under a CUSTOM
+ * id on the SOURCE's line without colliding with the source's phone-keyed chat — and that an inbound call
+ * from that number then resolves to the new chat, not the archived one.
+ */
+describe('referral transfer — same-line fork', () => {
+  const SRC = 'outbound__agentA__13034430103';
+
+  beforeEach(() => {
+    store.set(`chats/${SRC}`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '13034430103',
+      stage: 'Contacted',
+      memory: {
+        agent_id: 'agentA',
+        company: 'Acme',
+        campaign_id: 'camp1',
+        record_type: 'Real',
+        phone_number: '13034430103',
+        _conversation_summary: 'Prior call: asked for Claira.',
+      },
+    });
+  });
+
+  const nameOnly = { referred_first_name: 'Chris', referred_last_name: 'Vale' };
+
+  it('keys the new chat on the SOURCE line, clear of the source chat', async () => {
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.same_line).toBe(true);
+    expect(r.new_chat_id).toBe('outbound__agentA__13034430103__chris_vale');
+    expect(r.new_chat_id).not.toBe(SRC);
+  });
+
+  it('carries the SOURCE userId so an inbound call lands on the ACTIVE chat', async () => {
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    const nc = store.get(`chats/${r.new_chat_id}`)!;
+    expect(nc.userId).toBe('13034430103');
+    // The source is archived, so the deterministic id must NOT win the inbound lookup.
+    expect(await resolveActiveOutboundChat('agentA', '13034430103')).toBe(
+      r.new_chat_id
+    );
+  });
+
+  it('writes campaign_id at the TOP LEVEL — the campaign view lists by that field', async () => {
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    expect(store.get(`chats/${r.new_chat_id}`)!.campaign_id).toBe('camp1');
+  });
+
+  it('schedules exactly ONE warm first-touch task', async () => {
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    const tasks = store.collection(`chats/${r.new_chat_id}/tasks`);
+    expect(tasks).toHaveLength(1);
+    expect(
+      String((tasks[0][1].data as Record<string, unknown>).notes)
+    ).toContain('WARM REFERRAL first touch');
+    expect((tasks[0][1].data as Record<string, unknown>).task_source).toBe(
+      'referral_transfer'
+    );
+  });
+
+  it('name-only WITHOUT same-line is refused — it would fork onto the wrong line', async () => {
+    expect(await handleReferralTransfer(SRC, nameOnly)).toMatchObject({
+      ok: false,
+      insufficient_keys: true,
+    });
+  });
+
+  it('seeds the referrer’s call cards as tagged BACKGROUND, oldest first', async () => {
+    store.set(`chats/${SRC}/messages_v3/b`, {
+      type: 'call',
+      timestamp: new Date('2026-08-02T10:00:00Z'),
+      content: { callId: 'conv_2' },
+    });
+    store.set(`chats/${SRC}/messages_v3/a`, {
+      type: 'call',
+      timestamp: new Date('2026-08-01T10:00:00Z'),
+      content: { callId: 'conv_1' },
+    });
+    store.set(`chats/${SRC}/messages_v3/t`, {
+      type: 'text',
+      timestamp: new Date('2026-08-03T10:00:00Z'),
+      content: { body: 'not a call card' },
+    });
+
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    const seeded = store
+      .collection(`chats/${r.new_chat_id}/messages_v3`)
+      .map(([, d]) => d)
+      .sort(
+        (x, y) =>
+          (x.timestamp as Date).getTime() - (y.timestamp as Date).getTime()
+      );
+
+    // One intro header + the two CALL cards. The text card is not carried across.
+    expect(seeded).toHaveLength(3);
+    expect(
+      String((seeded[0].content as Record<string, unknown>).body)
+    ).toContain('CONTEXT FROM PRIOR CHAT');
+    expect((seeded[1].content as Record<string, unknown>).callId).toBe(
+      'conv_1'
+    );
+    expect((seeded[2].content as Record<string, unknown>).callId).toBe(
+      'conv_2'
+    );
+    // Every carried doc is tagged so the frontend can never render it as this chat's own conversation.
+    for (const d of seeded) expect(d.kind).toBe('referrer_context');
+    // The header sorts BEFORE the first card, so the block sits at the top.
+    expect((seeded[0].timestamp as Date).getTime()).toBeLessThan(
+      (seeded[1].timestamp as Date).getTime()
+    );
+  });
+
+  it('carries the referrer’s conversation summary across, distinctly named', async () => {
+    store.set(`chats/${SRC}/messages_v3/a`, {
+      type: 'call',
+      timestamp: new Date('2026-08-01T10:00:00Z'),
+      content: { callId: 'conv_1' },
+    });
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    const m = store.get(`chats/${r.new_chat_id}`)!.memory as Record<
+      string,
+      unknown
+    >;
+    expect(m._referrer_conversation_summary).toBe(
+      'Prior call: asked for Claira.'
+    );
+    // NOT confused with the new chat's own warm summary.
+    expect(String(m._conversation_summary)).toContain('WARM referral');
+  });
+
+  it('no call cards on the source → nothing seeded, transfer still succeeds', async () => {
+    const r = await handleReferralTransfer(SRC, nameOnly, {
+      forceSameLine: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(store.collection(`chats/${r.new_chat_id}/messages_v3`)).toHaveLength(
+      0
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveActiveOutboundChat', () => {
+  const DET = 'outbound__agentA__15551230000';
+
+  it('returns the deterministic chat when it is live — the ordinary case', async () => {
+    store.set(`chats/${DET}`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+    });
+    expect(await resolveActiveOutboundChat('agentA', '15551230000')).toBe(DET);
+  });
+
+  it('prefers the newest live chat on the line when the deterministic one is archived', async () => {
+    store.set(`chats/${DET}`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+      archived: true,
+    });
+    store.set(`chats/${DET}__old`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+      status_changed_at: '2026-08-01T00:00:00Z',
+    });
+    store.set(`chats/${DET}__new`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+      status_changed_at: '2026-08-05T00:00:00Z',
+    });
+    expect(await resolveActiveOutboundChat('agentA', '15551230000')).toBe(
+      `${DET}__new`
+    );
+  });
+
+  it('ignores other agents, inbound chats, and archived candidates', async () => {
+    store.set(`chats/${DET}`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+      status: 'archived',
+    });
+    store.set(`chats/other_agent`, {
+      type: 'outbound',
+      agentId: 'agentB',
+      userId: '15551230000',
+      status_changed_at: '2026-08-09T00:00:00Z',
+    });
+    store.set(`chats/inbound_one`, {
+      type: 'inbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+      status_changed_at: '2026-08-09T00:00:00Z',
+    });
+    store.set(`chats/also_archived`, {
+      type: 'outbound',
+      agentId: 'agentA',
+      userId: '15551230000',
+      archived: true,
+      status_changed_at: '2026-08-09T00:00:00Z',
+    });
+    // Nothing live to switch to → falls back to the deterministic chat, which at least exists.
+    expect(await resolveActiveOutboundChat('agentA', '15551230000')).toBe(DET);
+  });
+
+  it('returns null when the line has no chat at all', async () => {
+    expect(await resolveActiveOutboundChat('agentA', '19998887777')).toBeNull();
   });
 });

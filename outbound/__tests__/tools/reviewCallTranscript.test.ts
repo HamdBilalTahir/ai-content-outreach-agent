@@ -693,7 +693,10 @@ describe('the referral fork', () => {
       referral: REF,
     });
     const r = await review(callInfo());
-    expect(referral).toHaveBeenCalledWith(CHAT, REF, 'Jane', 'review_call');
+    expect(referral).toHaveBeenCalledWith(CHAT, REF, {
+      referrer: 'Jane',
+      source: 'review_call',
+    });
     expect(String((r.memory_changes as string[]).join())).toMatch(
       /referral transfer → new chat/
     );

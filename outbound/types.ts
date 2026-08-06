@@ -48,7 +48,8 @@ export interface ChatMemory {
   record_type?: string;
   timezone?: string;
   state?: string;
-  campaign_id?: string;
+  /** `null` when a chat was created outside a campaign — the referral fork writes it explicitly. */
+  campaign_id?: string | null;
   dealers_id?: string;
   hubspot_contact_id?: string;
   meeting_host?: string;
